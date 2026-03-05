@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.env
+.vscode/
+.idea/
+*.logs
+.venv/
+.env/
+.results/
+.src/config/config.py
+.src/__pycache__/
+.src/auth/
+.docker-compose.yaml
