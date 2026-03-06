@@ -5,7 +5,8 @@ ERP_COMMON_SOURCE_TYPES = [
     "erp_common_extrafields",
     "erp_common_extrafieldtemplates",
     "erp_common_reasoncodes",
-    "erp_common_units"
+    "erp_common_units",
+    "erp_common_departments"
 ]
 
 ERP_INVENTORY_SOURCE_TYPES = [
@@ -56,7 +57,8 @@ ERP_SOURCE_CONFIG = {
         "ExtraFields" : ["Id","ParentId","SelectedOptionId","SelectedOptionIds"],
         "ExtraFieldTemplates" : ["Id","Name","ParentId","RowNumber"],
         "ReasonCodes" : ["Id","Description","Code"],
-        "Units" : ["Id","Code","Description","Number"]
+        "Units" : ["Id","Code","Description","Number"],
+        "Departments" : ["Id","Code","Description"],
     },
 
     "inventory": {

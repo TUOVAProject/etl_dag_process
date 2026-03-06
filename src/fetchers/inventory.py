@@ -1,5 +1,5 @@
 import requests
-from src.helpers import save_json
+from src.helpers import save_json,save_parquet
 from src.config.config import INVENTORY_URL, AUTHVALUE
 from src.auth.auth import get_token, force_refresh_token
 
@@ -40,7 +40,7 @@ def fetch_inventory():
     results = {}
     for ep in endpoints:
         data = get_inventory_data(ep)
-        save_json(ep,data,base_path="results/raw/inventory")
+        save_parquet(ep,data,base_path="results/raw/inventory")
         results[ep] = data
     return results
 

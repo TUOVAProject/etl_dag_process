@@ -1,5 +1,5 @@
 import requests
-from src.helpers import save_json
+from src.helpers import save_json,save_parquet
 from src.config.config import MANUFACTURING_URL, AUTHVALUE
 from src.auth.auth import get_token, force_refresh_token
 
@@ -61,7 +61,7 @@ def fetch_manufacturing():
     results = {}
     for ep in endpoints:
         data = get_manufacturing_data(ep)
-        save_json(ep,data,base_path="results/raw/manufacturing")
+        save_parquet(ep,data,base_path="results/raw/manufacturing")
         results[ep] = data
     return results
 

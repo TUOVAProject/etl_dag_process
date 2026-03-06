@@ -2,6 +2,7 @@ from airflow.decorators import dag, task
 from airflow.utils.trigger_rule import TriggerRule
 from datetime import datetime, timedelta
 import logging
+import traceback
 import json
 import pandas as pd
 import numpy as np
@@ -12,17 +13,24 @@ from collections import defaultdict
 from babel.numbers import parse_decimal
 
 from decimal import Decimal
-from typing import Optional,Dict,List
+from typing import Optional,Dict,List,Mapping,Sequence
 from pathlib import Path
 from airflow.utils.context import Context
 
 from enum import Enum
 
-from config.erp_config import (
+from src.database.connection import get_engine
+from src.database.writers import save_df
+
+from src.config.erp_config import (
     ERP_COMMON_SOURCE_TYPES,ERP_INVENTORY_SOURCE_TYPES,ERP_MANUFACTURING_SOURCE_TYPES,
     ERP_SALES_SOURCE_TYPES,ERP_SOURCE_CONFIG,euro_columns,fact_order_rows,
     combine_inventory_tables,combine_manufacturing_tables,combine_sales_tables
 )
+
+for h in logging.root.handlers[:]:
+    logging.root.removeHandler(h)
+
 
 ########## Global Google Cloud Setup ##########
 
@@ -31,6 +39,8 @@ LOCAL_STAGED_PATH = Path("results/staged")
 LOCAL_COMBINED_PATH = Path("results/combined")
 TEMP_FILE_PATH = "data/temp-files"
 DATE_FMT = "%Y-%m-%d"
+LOG_FILE = Path(__file__).resolve().parent / "app.log"
+print(LOG_FILE)
 
 # Airflow related configs
 
@@ -151,8 +161,24 @@ def parse_erp_dates(df: pd.DataFrame, date_columns: list[str]) -> pd.DataFrame:
     return df
 
 
-def ticks_to_minutes(x):
-    return (x / 600_000_000).round().astype("Int64")
+def ticks_to_minutes(series: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(series, errors="coerce")
+    return (numeric / 600_000_000).round()
+
+
+def to_int64(series: pd.Series) -> pd.Series:
+    
+    series = series.astype("string").str.strip()
+
+    series = series.replace("", pd.NA)
+
+    return pd.to_numeric(series, errors="coerce").astype("Int64")
+
+def to_float64(series: pd.Series) -> pd.Series:
+    if pd.api.types.is_string_dtype(series) or pd.api.types.is_object_dtype(series):
+        series = series.astype("string").str.strip().replace("", pd.NA)
+    return pd.to_numeric(series, errors="coerce").astype("Float64")
+
 
 
 def load_csv_with_converters(file_path, euro_columns = list(), sep=';', dtypes= dict()):
@@ -164,9 +190,8 @@ def load_csv_with_converters(file_path, euro_columns = list(), sep=';', dtypes= 
     return pd.read_csv(file_path, sep=sep, converters=converters, dtype=dtypes)
 
 
-
 # Set up basic logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(filename = str(LOG_FILE),level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filemode="w")
 
 def load_json_with_converters(file_path, euro_columns=list(), dtypes=dict()):
     """
@@ -279,7 +304,8 @@ def replace_nan(obj):
         return [replace_nan(v) for v in obj]
     return obj
 
-def save_clean_json(endpoint: str, data: pd.DataFrame, base_path: Path):
+#Testi
+"""def save_clean_json(endpoint: str, data: pd.DataFrame, base_path: Path):
     endpoint_name = endpoint.lstrip("/").replace("/", "-") or "root"
 
     base_path.mkdir(parents=True, exist_ok=True)
@@ -295,7 +321,21 @@ def save_clean_json(endpoint: str, data: pd.DataFrame, base_path: Path):
         json.dump(json_ready, f, indent=4, ensure_ascii=False,allow_nan=False)
 
     print(f"Saved cleaned data: {full_path}")
-    return json_ready
+    return json_ready"""
+
+def save_clean_parquet(endpoint: str, df: pd.DataFrame, base_path: Path):
+    endpoint_name = endpoint.lstrip("/").replace("/", "-") or "root"
+
+    base_path.mkdir(parents=True, exist_ok=True)
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    filename = f"{date_str}-{endpoint_name}.parquet"
+    full_path = base_path / filename
+
+    df.to_parquet(full_path,index=False)
+
+    print(f"Saved cleaned data: {full_path}")
+    return full_path
 
 def extract_source_and_endpoint(file_path: Path) -> tuple[str, str]:
     endpoint = file_path.parent.parent.name
@@ -308,11 +348,10 @@ def process_erp_files(file_path: Path):
     source_type, endpoint = extract_source_and_endpoint(file_path)
 
     
-    with open(file_path, "r", encoding="utf-8") as f:
-        raw = json.load(f, parse_int=str, parse_float=str)
+    #with open(file_path, "r", encoding="utf-8") as f:
+        #raw = json.load(f, parse_int=str, parse_float=str)
 
-    df = pd.json_normalize(raw)
-
+    df = pd.read_parquet(file_path)
 
     try:
         columns = ERP_SOURCE_CONFIG[source_type][endpoint]
@@ -323,8 +362,8 @@ def process_erp_files(file_path: Path):
 
     df = df[[c for c in columns if c in df.columns]]
 
-    saved_json = save_clean_json(endpoint, df, LOCAL_STAGED_PATH / source_type)
-    return saved_json
+    saved_parquet = save_clean_parquet(endpoint, df, LOCAL_STAGED_PATH / source_type)
+    return saved_parquet
 
 
 def _parse_date_dir(name: str):
@@ -368,15 +407,26 @@ def get_latest_endpoint_files(endpoint: str) -> Dict[str, List[Path]]:
 
     return dict(files_by_endpoint)
 
-def load_json_safely(path: Path):
+"""def load_json_safely(path: Path):
     df = pd.read_json(path, dtype={})
     df = pd.DataFrame(df)
     df = df.fillna("")
-    return df.astype("string")
+    return df.astype("string")"""
+
+
+def load_parquet_safely(path: Path) -> pd.DataFrame:
+    df = pd.read_parquet(path)
+    return df
+
+
+"""def load_and_restrict(path: Path, required_cols: list[str]) -> pd.DataFrame:
+    df = load_json_safely(path)
+    keep = [col for col in required_cols if col in df.columns]
+    return df[keep].copy()"""
 
 
 def load_and_restrict(path: Path, required_cols: list[str]) -> pd.DataFrame:
-    df = load_json_safely(path)
+    df = load_parquet_safely(path)
     keep = [col for col in required_cols if col in df.columns]
     return df[keep].copy()
 
@@ -388,10 +438,12 @@ def load_latest(
     required_cols: list[str] | None = None
 ):
 
-    patt = re.compile(r"(\d{4}-\d{2}-\d{2})-" + re.escape(prefix) + r"\.json$")
+    #patt = re.compile(r"(\d{4}-\d{2}-\d{2})-" + re.escape(prefix) + r"\.json$")
+    patt = re.compile(r"(\d{4}-\d{2}-\d{2})-" + re.escape(prefix) + r"\.parquet$")
     candidates = []
 
-    for file in base.glob("*.json"):
+    #for file in base.glob("*.json"):
+    for file in base.glob("*.parquet"):
         m = patt.match(file.name)
         if m:
             candidates.append((m.group(1), file))
@@ -406,21 +458,28 @@ def load_latest(
         if required_cols is not None:
             df = load_and_restrict(filepath, required_cols)
         else:
-            df = load_json_safely(filepath)
+            df = load_parquet_safely(filepath)
     elif mode == LoadMode.COMBINED:
-        df = load_json_safely(filepath)
+        df = load_parquet_safely(filepath)
     else:
         raise ValueError(f"Unknown mode '{mode}'. Use 'staged' or 'combined'.")
 
     return latest_date, df
 
-
-def save_combined(df: pd.DataFrame, date_str: str, outdir: Path, endpoint :str):
+#Testi
+"""def save_combined_json(df: pd.DataFrame, date_str: str, outdir: Path, endpoint :str):
     outdir.mkdir(parents=True, exist_ok=True)
-    fileName = "Combined" + endpoint.capitalize() + ".json"
-    output_file = outdir / f"{date_str}-{fileName}"
-
+    file_name = f"Combined{endpoint.capitalize()}.parquet"
+    output_file = outdir / f"{date_str}-{file_name}"
     df.to_json(output_file, orient="records", indent=2, force_ascii=False)
+    print("Saved combined:", output_file)
+    return output_file"""
+
+def save_combined_parquet(df: pd.DataFrame, date_str: str, outdir: Path, endpoint :str):
+    outdir.mkdir(parents=True, exist_ok=True)
+    file_name = f"Combined{endpoint.capitalize()}.parquet"
+    output_file = outdir / f"{date_str}-{file_name}"
+    df.to_parquet(output_file,index=False)
     print("Saved combined:", output_file)
     return output_file
 
@@ -463,7 +522,7 @@ def combine_sales_data(staged_path: Path, mapping: dict):
     merged = merged.drop(columns=["Id_cust"], errors="ignore")
     date_str = datetime.now().strftime("%Y-%m-%d")
     endpoint = "sales"
-    save_combined(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
+    save_combined_parquet(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
     return merged
 
 
@@ -489,7 +548,7 @@ def combine_inventory_data(staged_path: Path, mapping: dict):
     date_str = datetime.now().strftime("%Y-%m-%d")
     endpoint = "inventory"
 
-    save_combined(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
+    save_combined_parquet(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
 
 
 def combine_manufacturing_data(staged_path: Path, mapping: dict):
@@ -537,7 +596,7 @@ def combine_manufacturing_data(staged_path: Path, mapping: dict):
     date_str = datetime.now().strftime("%Y-%m-%d")
 
     endpoint = "manufacturing"
-    save_combined(merged, date_str, LOCAL_COMBINED_PATH / endpoint,endpoint)
+    save_combined_parquet(merged, date_str, LOCAL_COMBINED_PATH / endpoint,endpoint)
 
     return merged
 
@@ -545,12 +604,12 @@ def combine_manufacturing_data(staged_path: Path, mapping: dict):
 def process_and_stage_fact_order_rows(staged_path: Path, combined_sales: pd.DataFrame):
 
     fact_order_rows = pd.DataFrame({
-        "order_row_id": combined_sales["Id"],
-        "order_number": combined_sales["OrderNumber"],
+        "order_row_id": to_int64(combined_sales["Id"]),
+        "order_number": pd.to_numeric(combined_sales["OrderNumber"],errors="coerce"),
         "work_number": pd.NA,
-        "customer_id": combined_sales["CustomerId"],
-        "seller_id": combined_sales["SellerId"],
-        "article_id": combined_sales["PartId"],
+        "customer_id": to_int64(combined_sales["CustomerId"]),
+        "seller_id": to_int64(combined_sales["SellerId"]),
+        "article_id": to_int64(combined_sales["PartId"]),
         "order_created_date":     get_date_key(combined_sales["OrderDate"]),
         "start_date_planned":     pd.NA,
         "start_date_actual":      pd.NA,
@@ -558,80 +617,50 @@ def process_and_stage_fact_order_rows(staged_path: Path, combined_sales: pd.Data
         "end_date_actual":        get_date_key(combined_sales["NewFinishDate"]),
         "delivery_date_planned":  get_date_key(combined_sales["InitialDeliveryDate"]),
         "delivery_date_actual":   get_date_key(combined_sales["DeliveryDate"]),
-        "order_state_id":         combined_sales["Status"],
-        "order_type_id":          combined_sales["OrderRowType"],
-        "ordered_qty":            combined_sales["OrderedQuantity"],
+        "order_state_id":         pd.to_numeric(combined_sales["Status"],errors="coerce"),
+        "order_type_id":          pd.to_numeric(combined_sales["OrderRowType"],errors="coerce"),
+        "ordered_qty":            pd.to_numeric(combined_sales["OrderedQuantity"],errors="coerce"),
         "total_price":            pd.NA,
-        "unit_price":             combined_sales["Price"],
+        "unit_price":             pd.to_numeric(combined_sales["Price"],errors="coerce").astype("float"),
         "unit_prime_cost_planned": pd.NA,
         "prime_cost_planned_sum":  pd.NA,
         "unit_prime_cost_actual":  pd.NA,
         "prime_cost_actual_sum":   pd.NA,
-        "unit":                   combined_sales["UnitId"],
+        "unit":                   to_int64(combined_sales["UnitId"]),
         "currency":               "EUR",
         "sales_margin_planned":   pd.NA,
         "sales_margin_actual":    pd.NA,
         "new_article":            pd.NA,
-        "order_complete":         combined_sales["NewFinishDate"],
+        "order_complete":         get_date_key(combined_sales["NewFinishDate"]),
     })
     return fact_order_rows
 
-@task(trigger_rule=TriggerRule.ALL_SUCCESS)
+#@task(trigger_rule=TriggerRule.ALL_SUCCESS)
 def process_and_stage_fact_workphases(combined_manufacturing: pd.DataFrame):
 
-    """fact_workphases = pd.merge(
-        phases_comb_dm_pseudo,
-        phase_ids,
-        how="left",
-        left_on=["PhaseDescription", "PhaseNumber", "PhaseDetail"],
-        right_on=["phase_name", "phase_number", "phase_description"]
-    )
-
-    # Rename columns
-    fact_workphases = fact_workphases.rename(columns={
-        "machine_id": "machid",
-        "article_id": "artid",
-        "phase_id": "phasid"
-    })
-
-    # Join with phase_ids on PhaseDescription, PhaseNumber, PhaseDetail
-    fact_workphases = pd.merge(
-        phases_comb_dm_pseudo,
-        phase_ids,
-        how="left",
-        left_on=["PhaseDescription", "PhaseNumber", "PhaseDetail"],
-        right_on=["phase_name", "phase_number", "phase_description"]
-    )
-
-    # Rename columns
-    fact_workphases = fact_workphases.rename(columns={
-        "machine_id": "machid",
-        "article_id": "artid",
-        "phase_id": "phasid"
-    })"""
-
     fact_workphases = pd.DataFrame({
-        "workphase_id": combined_manufacturing["ManufacturingOrderOperationId"],
-        "order_row_id": combined_manufacturing["CustomerOrderId"],
-        "work_number": combined_manufacturing["OperationRowNumber"],
-        "machine_id": combined_manufacturing["WorkCenterId"],
-        "article_id": combined_manufacturing["PartId"],
+        "workphase_id": to_int64(combined_manufacturing["ManufacturingOrderOperationId"]),
+        "order_row_id": to_int64(combined_manufacturing["CustomerOrderId"]),
+        "work_number": to_int64(combined_manufacturing["OperationNumber"]),
+        #"order_number" : combined_manufacturing["OrderNumber"],
+        "machine_id": to_int64(combined_manufacturing["WorkCenterId"]),
+        "article_id": to_int64(combined_manufacturing["PartId"]),
         "start_date_planned" : get_date_key(combined_manufacturing["PlannedStartDate"]),
         "start_date_actual": get_date_key(combined_manufacturing["ActualStartDate"]),
-        "end_date_planned": get_date_key(combined_manufacturing["PlannedEndDate"]),
-        "end_date_actual": get_date_key(combined_manufacturing["ActualEndDate"]),
+        "end_date_planned": get_date_key(combined_manufacturing["PlannedFinishDate"]),
+        "end_date_actual": get_date_key(combined_manufacturing["ActualFinishDate"]),
         "start_time_planned": pd.NA,
         "start_time_actual": pd.NA,
         "end_time_planned": pd.NA,
         "end_time_actual": pd.NA,
-        "phase_id": combined_manufacturing["OperationRowId"],
+        "phase_id": to_int64(combined_manufacturing["OperationRowId"]),
         "start_timestamp_planned": pd.NA,
         "end_timestamp_planned": pd.NA,
         "phase_duration_planned_min": (ticks_to_minutes(combined_manufacturing["ReportedUnitTime"]) + ticks_to_minutes(combined_manufacturing["ReportedSetupTime"])),
         "phase_duration_actual_min": pd.NA,
-        "planned_qty": combined_manufacturing["PlannedQuantity"],
-        "produced_qty": combined_manufacturing["ReportedQuantity"],
-        "rejected_qty": combined_manufacturing["RejectedQuantity"],
+        "planned_qty": pd.to_numeric(combined_manufacturing["PlannedQuantity"],errors="coerce"),
+        "produced_qty": pd.to_numeric(combined_manufacturing["ReportedQuantity"],errors="coerce"),
+        "rejected_qty": pd.to_numeric(combined_manufacturing["RejectedQuantity"],errors="coerce"),
         "phase_price_planned": pd.NA,
         "phase_price_actual": pd.NA,
         "setup_time_planned_min": ticks_to_minutes(combined_manufacturing["PlannedSetupTime"]),
@@ -645,57 +674,106 @@ def process_and_stage_fact_workphases(combined_manufacturing: pd.DataFrame):
 
     return fact_workphases
 
+
+def shape_and_types(
+    df: pd.DataFrame,
+    rename_map: Mapping[str, str],
+    keep_cols: Sequence[str],
+    int_cols: Sequence[str] = (),
+    float_cols: Sequence[str] = (),
+) -> pd.DataFrame:
+    """
+    - Nimeää sarakkeet rename_map:in mukaan (vanha -> uusi).
+    - Luo puuttuvat sarakkeet keep_cols-listasta (täyttää pd.NA:lla).
+    - Rajaa outputin täsmälleen keep_cols-järjestykseen.
+    - Konvertoi dtyperit:
+        * int_cols  -> Pandas Int64 (nullable)
+        * float_cols -> Pandas Float64 (nullable)
+        * kaikki loput (keep_cols - int_cols - float_cols) -> Pandas string + strip
+    """
+    out = df.rename(columns=rename_map).copy()
+
+    for c in keep_cols:
+        if c not in out.columns:
+            out[c] = pd.NA
+
+    out = out[[c for c in keep_cols if c in out.columns]]
+
+    int_set = set(int_cols)
+    float_set = set(float_cols)
+    str_cols_auto = [c for c in keep_cols if c not in int_set | float_set]
+
+    for c in int_cols:
+        if c in out.columns:
+            out[c] = to_int64(out[c])
+
+    for c in float_cols:
+        if c in out.columns:
+            out[c] = to_float64(out[c])
+
+    for c in str_cols_auto:
+        if c in out.columns:
+            out[c] = out[c].astype("string").str.strip()
+
+    return out
+
+
+
 def process_dim():
     date_rows, work_centers = load_latest(LOCAL_STAGED_PATH / "manufacturing", "WorkCenters",LoadMode.STAGED)
     date_rows, customers = load_latest(LOCAL_STAGED_PATH / "sales", "Customers",LoadMode.STAGED)
-    date_rows, order_types = load_latest(LOCAL_STAGED_PATH / "inventory", "CustomerOrderTypes",LoadMode.STAGED)
+    date_rows, order_types = load_latest(LOCAL_STAGED_PATH / "sales", "CustomerOrderTypes",LoadMode.STAGED)
     date_rows, parts = load_latest(LOCAL_COMBINED_PATH / "inventory", "CombinedInventory",LoadMode.COMBINED)
-    work_centers.rename(
-        columns = {
-            "machine_id" : "Id",
-            "machine_name" : "Description",
-            "manufacturer_name" : pd.NA,
-            "machine_type" : "Type",
-            "cost_per_hour" : pd.NA,
-            "machine_group_id" : "DepartmentId",
-            "valid_from" : pd.NA,
-            "valid_to" : pd.NA,
-            "is_current" : pd.NA,
-        }
-    )
-    parts.rename(
-        columns = {
-            "article_id" : "Id_part",
-            "article_code" : "Code",
-            "article_name" : "PartNumber",
-            "article_name_other" : "Alias_part",
-            "article_description" : "Description_part",
-            "article_group" : "",
-            "revision" : "ActiveRevisionId",
-            "prime_cost" : "StandardPrice",
-            "notes" : "ExtraDescription",
-            "valid_from" : pd.NA,
-            "valid_to" : pd.NA,
-            "is_current" : pd.NA
-        }
-    )
-    customers.rename(
-        columns = {
-            "customer_id" : "Id",
-            "customer_number" : "Code",
-            "customer_name" : "Name",
-            "location" : pd.NA,
-            "valid_from" : pd.NA,
-            "valid_to" : pd.NA,
-            "is_current" : pd.NA
-        }
-    )
-    order_types.rename(
-        columns = {
-            "order_state_id" : "Id",
-            "order_type_name" : "Description",
-        }
-    )
+
+    rename_work_centers = {
+        "Id" : "machine_id",
+        "Description" : "machine_name",
+        "Type" : "machine_type",
+        "DepartmentId" : "machine_group_id", 
+    }
+
+    work_center_int_cols = ["machine_id","machine_group_id"]
+    work_center_keep_columns = [ "machine_id","machine_name","manufacturer_name", "machine_type","cost_per_hour","machine_group_id","valid_from","valid_to","is_current"]
+    work_centers = shape_and_types(work_centers,rename_work_centers,work_center_keep_columns,work_center_int_cols)
+
+
+    rename_parts = {
+        "Id_part" : "article_id",
+        "Code" : "article_code",
+        "PartNumber" : "article_name",
+        "Alias_part" : "article_name_other",
+        "Description_part" : "article_description",
+        "ActiveRevisionId" : "revision",
+        "StandardPrice" : "prime_cost",
+        "ExtraDescription" : "notes",
+    }
+
+    part_int_columns = ["article_id","revision"]
+    part_float_columns = ["prime_cost"]
+    part_keep_columns = [ "article_id","article_code","article_name","article_name_other","article_description","article_group","revision","prime_cost","notes","valid_from","valid_to","is_current"]
+    parts = shape_and_types(parts,rename_parts,part_keep_columns,part_int_columns,part_float_columns)
+
+    rename_customers = {
+        "Id" : "customer_id",
+        "Code" : "customer_number",
+        "Name" : "customer_name",
+    }
+    
+
+    customer_int_columns = ["customer_id"]
+    customer_keep_columns = ["customer_id","customer_number", "customer_name","location"]
+    customers = shape_and_types(customers,rename_customers,customer_keep_columns,customer_int_columns)
+
+
+    rename_order_types= {
+        "Id" : "order_type_id",
+        "Description" : "order_type_name",
+    }
+    
+    order_type_int_columns = ["order_type_id"]
+    order_types_to_keep = [ "order_type_id","order_type_name"]
+    order_types = shape_and_types(order_types,rename_order_types,order_types_to_keep,order_type_int_columns)
+
     return work_centers,parts,customers,order_types
 
 
@@ -743,5 +821,20 @@ def erp_file_processor():
     fact_order_rows = process_and_stage_fact_order_rows(LOCAL_COMBINED_PATH / "sales",combined_sales)
     fact_workphases = process_and_stage_fact_workphases(combined_orders)
     work_centers,parts,customers,order_types = process_dim()
+
+    engine = get_engine()
+
+    try:
+        with engine.begin() as conn:
+            save_df(fact_order_rows,"fact_order_rows",conn)
+            save_df(fact_workphases,"fact_workphases",conn)
+            save_df(work_centers,"dim_machine",conn)
+            save_df(parts,"dim_article",conn)
+            save_df(customers,"dim_customer",conn)
+            save_df(order_types,"dim_order_type",conn)
+    
+    except Exception as e:
+            logging.error("safe_df epäonnistui: %s", str(e))
+            raise RuntimeError("save_df epäonnistui — katso app.log") from None
 
 #dag_instance = erp_file_processor()

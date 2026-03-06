@@ -1,5 +1,5 @@
 import requests
-from src.helpers import save_json
+from src.helpers import save_json,save_parquet
 from src.config.config import COMMON_URL, AUTHVALUE
 from src.auth.auth import get_token, force_refresh_token
 
@@ -46,7 +46,7 @@ def fetch_common():
     results = {}
     for ep in endpoints:
         data = get_common_data(ep)
-        save_json(ep,data,base_path="results/raw/common")
+        save_parquet(ep,data,base_path="results/raw/common")
         results[ep] = data
     return results
 

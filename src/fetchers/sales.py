@@ -1,5 +1,5 @@
 import requests
-from src.helpers import save_json
+from src.helpers import save_json, save_parquet
 from src.config.config import SALES_URL, AUTHVALUE
 from src.auth.auth import get_token, force_refresh_token
 
@@ -45,7 +45,7 @@ def fetch_sales():
     results = {}
     for ep in endpoints:
         data = get_sales_data(ep)
-        save_json(ep,data,base_path="results/raw/sales")
+        save_parquet(ep,data,base_path="results/raw/sales")
         results[ep] = data
     return results
 
