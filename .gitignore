@@ -12,3 +12,4 @@ src/config/config.py
 src/__pycache__/
 src/auth/
 docker-compose.yaml
+logs/
