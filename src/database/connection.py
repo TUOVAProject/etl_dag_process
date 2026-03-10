@@ -1,11 +1,11 @@
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
-from typing import Any
+from typing import Any, Union
 from urllib.parse import quote_plus
-from src.config.config import DB_SERVER,DB_NAME,DB_PORT,DB_USER,DB_PASSWORD
+from config.config import DB_SERVER,DB_NAME,DB_PORT,DB_USER,DB_PASSWORD
 from sqlalchemy import text as sa_text
 import pandas as pd
-def get_engine() -> Engine | Any:
+def get_engine() -> Union[Engine, Any]:
     
     server = DB_SERVER
     port = DB_PORT

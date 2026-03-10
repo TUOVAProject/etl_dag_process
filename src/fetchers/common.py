@@ -1,7 +1,7 @@
 import requests
-from src.helpers import save_json,save_parquet
-from src.config.config import COMMON_URL, AUTHVALUE
-from src.auth.auth import get_token, force_refresh_token
+from helpers import save_json,save_parquet
+from config.config import COMMON_URL, AUTHVALUE
+from auth.auth import get_token, force_refresh_token
 
 def fetch_common():
     token = get_token()

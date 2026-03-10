@@ -1,7 +1,7 @@
 import requests
-from src.helpers import save_json, save_parquet
-from src.config.config import SALES_URL, AUTHVALUE
-from src.auth.auth import get_token, force_refresh_token
+from helpers import save_json, save_parquet
+from config.config import SALES_URL, AUTHVALUE
+from auth.auth import get_token, force_refresh_token
 
 def fetch_sales():
     token = get_token()
