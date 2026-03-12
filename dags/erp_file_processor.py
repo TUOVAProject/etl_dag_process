@@ -25,6 +25,7 @@ from fetchers.common import fetch_common
 from fetchers.inventory import fetch_inventory
 from fetchers.manufacturing import fetch_manufacturing
 from fetchers.sales import fetch_sales
+from auth.auth import get_token
 
 from config.erp_config import (
     ERP_COMMON_SOURCE_TYPES,ERP_INVENTORY_SOURCE_TYPES,ERP_MANUFACTURING_SOURCE_TYPES,
@@ -38,15 +39,11 @@ for h in logging.root.handlers[:]:
 
 ########## Global Google Cloud Setup ##########
 
-#LOCAL_BASE_PATH = "results/raw"
-#LOCAL_STAGED_PATH = Path("results/staged")
-#LOCAL_COMBINED_PATH = Path("results/combined")
+LOCAL_BASE_PATH = "results/raw"
+LOCAL_STAGED_PATH = Path("results/staged")
+LOCAL_COMBINED_PATH = Path("results/combined")
 
-LOCAL_BASE_PATH = Path("/opt/airflow/raw")
-LOCAL_STAGED_PATH = Path("/opt/airflow/staged")
-LOCAL_COMBINED_PATH = Path("/opt/airflow/combined")
 
-TEMP_FILE_PATH = "data/temp-files"
 DATE_FMT = "%Y-%m-%d"
 LOG_FILE = Path(__file__).resolve().parent / "app.log"
 
@@ -121,11 +118,11 @@ def get_date_key(dt):
     return int(pd.Timestamp(dt).strftime("%Y%m%d"))
 
 
-def get_time_key(dt):
-    """
-    Convert to seconds since midnight with <NA> for missing.
-    Accepts scalar or pandas Series. Vectorized for Series input.
-    """
+"""def get_time_key(dt):
+    
+    #Convert to seconds since midnight with <NA> for missing.
+    #Accepts scalar or pandas Series. Vectorized for Series input.
+    
     if isinstance(dt, pd.Series):
         s = dt
         if not pd.api.types.is_datetime64_any_dtype(s):
@@ -145,10 +142,10 @@ def get_time_key(dt):
 
 
 def parse_euro_number(x):
-    """
-    Parses a European-style number string to float.
-    Returns original value if parsing fails.
-    """
+    
+    #Parses a European-style number string to float.
+    #Returns original value if parsing fails.
+    
     try:
         # Replace decimal comma with dot
         x_clean = x.replace(',', '.')
@@ -156,7 +153,7 @@ def parse_euro_number(x):
     except Exception:
         return x
     
-"""def parse_erp_dates(df: pd.DataFrame, date_columns: List[str]) -> pd.DataFrame:
+def parse_erp_dates(df: pd.DataFrame, date_columns: List[str]) -> pd.DataFrame:
     for col in date_columns:
         s = pd.to_datetime(df[col], errors="coerce", dayfirst=True)
 
@@ -188,14 +185,14 @@ def to_float64(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce").astype("Float64")
 
 
-
+"""
 def load_csv_with_converters(file_path, euro_columns = list(), sep=';', dtypes= dict()):
    
     converters = {col: parse_euro_number for col in euro_columns}
 
     logging.info(f"Loading CSV file: {file_path}")
     
-    return pd.read_csv(file_path, sep=sep, converters=converters, dtype=dtypes)
+    return pd.read_csv(file_path, sep=sep, converters=converters, dtype=dtypes) """
 
 
 # Set up basic logging
@@ -364,7 +361,7 @@ def process_erp_files(file_path: Path):
         )
 
     df = df[[c for c in columns if c in df.columns]]
-
+    print("Saveing parquet : ", LOCAL_STAGED_PATH / source_type)
     saved_parquet = save_clean_parquet(endpoint, df, LOCAL_STAGED_PATH / source_type)
     return saved_parquet
 
@@ -488,7 +485,7 @@ def save_combined_parquet(df: pd.DataFrame, date_str: str, outdir: Path, endpoin
     output_file = outdir / f"{date_str}-{file_name}"
     df.to_parquet(output_file,index=False)
     print("Saved combined:", output_file)
-    return output_file
+    return str(output_file)
 
 
 #For error handling in debugging, might delete later
@@ -848,9 +845,15 @@ def route_manufacturing_files_to_processors(files: list):
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
 def process_erp_files_task(my_files):
+    print("Processing files")
     for endpoint, files in my_files.items():
         for file_path in files:
+            print(file_path)
             process_erp_files(Path(file_path))
+
+@task()
+def get_token_task():
+    get_token()
 
 @task()
 def fetch_common_task():
@@ -877,38 +880,49 @@ def fetch_sales_task():
 )
 def erp_file_processor():
 
+    authenticate = get_token_task()
     
     t_common = fetch_common_task()
     t_inventory = fetch_inventory_task()
     t_manufacturing = fetch_manufacturing_task()
     t_sales = fetch_sales_task()
-
     
     manufacturing_files = get_latest_endpoint_files_task("manufacturing")
-
-    [t_common, t_inventory, t_manufacturing, t_sales] >> manufacturing_files
-
-    process_erp_files_task(manufacturing_files)
-
     common_files = get_latest_endpoint_files_task("common")
-    process_erp_files_task(common_files)
-
     inventory_files = get_latest_endpoint_files_task("inventory")
-    process_erp_files_task(inventory_files)
-            
     sales_files = get_latest_endpoint_files_task("sales")
-    process_erp_files_task(sales_files)
+
+    process_manufacturing = process_erp_files_task(manufacturing_files)
+    process_common = process_erp_files_task(common_files)
+    process_inventory = process_erp_files_task(inventory_files)
+    process_sales = process_erp_files_task(sales_files)
 
     combined_orders = combine_manufacturing_data_task(str(LOCAL_STAGED_PATH / "manufacturing"),combine_manufacturing_tables)
-    
-    [manufacturing_files, common_files, inventory_files, sales_files] >> combined_orders
-
     combined_sales = combine_sales_data_task(str(LOCAL_STAGED_PATH / "sales"), combine_sales_tables)
     combined_inventory = combine_inventory_data_task(str(LOCAL_STAGED_PATH / "inventory"), combine_inventory_tables)
-    process_and_stage_fact_order_rows_task(combined_sales)
-    process_and_stage_fact_workphases_task(combined_orders)
-    process_dim_task()
 
+    processed_orders = process_and_stage_fact_order_rows_task(combined_sales)
+    processed_workphases = process_and_stage_fact_workphases_task(combined_orders)
+
+    processed_dim = process_dim_task()
+
+    
+    authenticate >> t_common >> t_inventory >> t_manufacturing >> t_sales
+
+    t_manufacturing >> manufacturing_files >> process_manufacturing >> combined_orders
+
+    t_common >> common_files >> process_common
+
+    t_inventory >> inventory_files >> process_inventory >> combined_inventory
+
+    t_sales >> sales_files >> process_sales >> combined_sales
+
+    combined_sales >> processed_orders
+    combined_orders >> processed_workphases
+
+    [processed_orders, processed_workphases] >> processed_dim
+
+    
 """
 #Test for debugging the airflow behaviour without aiflow
 def erp_file_processor_test():

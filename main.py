@@ -4,11 +4,8 @@
 #from src.fetchers.sales import fetch_sales
 ##from src.auth.auth import _login_and_get_token
 #from src.dag_test import erp_file_processor
-#from src.dataset_to_excel import dataset_to_excel,export_endpoint_to_csv
-from dags.erp_file_processor import erp_file_processor_test
-
-import pandas as pd
-import sqlalchemy as sa
+from src.dataset_to_excel import dataset_to_excel,export_endpoint_to_csv
+#from dags.erp_file_processor import erp_file_processor_test
 
 
 def main():
@@ -21,9 +18,9 @@ def main():
     #print("Fetching from /Sales endpoint")
     #fetch_sales()
     #erp_file_processor()
-    erp_file_processor_test()
-    #export_endpoint_to_csv()
-    
+    #erp_file_processor_test()
+    dataset_to_excel()
+    export_endpoint_to_csv()
 
 if __name__ == "__main__":
     main()

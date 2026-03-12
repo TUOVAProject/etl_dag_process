@@ -18,7 +18,7 @@ def fetch_sales():
         "/SalesPrices", 
         "/InvoiceLogs"
     ]
-    query = "?$top=3000&$orderby=Id desc"
+    query = "?$orderby=Id desc"
 
     def get_sales_data(endpoint):
         url = f"{SALES_URL}/{endpoint}{query}"

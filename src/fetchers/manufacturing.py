@@ -12,7 +12,8 @@ def fetch_manufacturing():
     endpoints = [
         "/Drawings",
         #"/MaintenanceReportingRows",
-        #"/MaintenanceReporting",
+        #"/MaintenanceReportings",
+        #"/MaintenanceReportingSelectionRows",
         "/ManualOperationStatuses",
         "/ManufacturingOrderMaterials",
         "/ManufacturingOrderNodeDrawings",
@@ -34,7 +35,7 @@ def fetch_manufacturing():
         "/WorkCenters",
         
     ]
-    query = "?$top=3000&$orderby=Id desc"
+    query = "?orderby=Id desc"
 
     def get_manufacturing_data(endpoint):
         url = f"{MANUFACTURING_URL}/{endpoint}{query}"

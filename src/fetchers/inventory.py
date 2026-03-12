@@ -13,7 +13,7 @@ def fetch_inventory():
         "/Parts",
         "/PartCodes"
     ]
-    query = "?$top=3000&$orderby=Id desc"
+    query = "?$orderby=Id desc"
 
     def get_inventory_data(endpoint):
         url = f"{INVENTORY_URL}/{endpoint}{query}"

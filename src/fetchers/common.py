@@ -19,14 +19,13 @@ def fetch_common():
         "/ReasonCodes",
         "/Departments"
     ]
-    query = "?$top=3000&$orderby=Id desc"
+    query = "?$orderby=Id desc"
 
     def get_common_data(endpoint):
         url = f"{COMMON_URL}/{endpoint}{query}"
         max_retries = 2
         for attempt in range(max_retries + 1):
             response = requests.get(url, headers=authHeader,verify=False)
-
             if response.status_code != 200:
                 print(f"[{endpoint}] Token expired → refreshing ({attempt+1}/{max_retries})")
                 token = force_refresh_token()
