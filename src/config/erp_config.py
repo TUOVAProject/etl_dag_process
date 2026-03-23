@@ -22,7 +22,7 @@ ERP_MANUFACTURING_SOURCE_TYPES = [
     "erp_manufacturing_orderNodes",
     "erp_manufacturing_orderOperationControlDataRows",
     "erp_manufacturing_orderOperationReportings",
-     "erp_manufacturing_orderOperations",
+    "erp_manufacturing_orderOperations",
     "erp_manufacturing_orders",
     "erp_manufacturing_orderTypes",
     "erp_manufacturing_materialRows",

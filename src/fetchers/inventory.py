@@ -1,7 +1,9 @@
 import requests
-from helpers import save_json,save_parquet
+from helpers import save_json,save_parquet,clean_folder
 from config.config import INVENTORY_URL, AUTHVALUE
 from auth.auth import get_token, force_refresh_token
+import logging
+logger = logging.getLogger("custom_logger")
 
 def fetch_inventory():
     token = get_token()
@@ -22,7 +24,7 @@ def fetch_inventory():
             response = requests.get(url, headers=authHeader,verify=False)
 
             if response.status_code != 200:
-                print(f"[{endpoint}] Token expired → refreshing ({attempt+1}/{max_retries})")
+                logger.info(f"[{endpoint}] Token expired → refreshing ({attempt+1}/{max_retries})")
                 token = force_refresh_token()
                 authHeader[AUTHVALUE] = token
                 continue
@@ -42,6 +44,7 @@ def fetch_inventory():
         data = get_inventory_data(ep)
         save_parquet(ep,data,base_path="results/raw/inventory")
         results[ep] = data
+    clean_folder(ep, days_to_keep = 2, base_path="results/raw/inventory")
     return results
 
 

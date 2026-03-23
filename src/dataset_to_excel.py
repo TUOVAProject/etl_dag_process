@@ -155,7 +155,7 @@ def dataset_to_excel():
 
                     base_prefix = root.name
                     base_file = parquet_path.stem
-                    sheet_name = safe_sheet_name(f"{base_prefix}_{base_file}")
+                    sheet_name = safe_sheet_name(f"{base_file}")
                     print(sheet_name)
 
                     if df.empty:
@@ -233,7 +233,8 @@ def export_endpoint_to_csv():
             
             for parquet_path in parquet_files:
                 endpoint = parquet_path.stem
-                csv_name = f"{safe_filename(domain)}_{safe_filename(category)}_{safe_filename(endpoint)}.csv"
+                #csv_name = f"{safe_filename(domain)}_{safe_filename(category)}_{safe_filename(endpoint)}.csv"
+                csv_name = f"{safe_filename(endpoint)}.csv"
                 csv_path = out_dir / csv_name
 
                 try:

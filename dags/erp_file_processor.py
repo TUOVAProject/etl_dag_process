@@ -33,10 +33,11 @@ from config.erp_config import (
     combine_inventory_tables,combine_manufacturing_tables,combine_sales_tables
 )
 
-for h in logging.root.handlers[:]:
-    logging.root.removeHandler(h)
 
+#for h in logger.root.handlers[:]:
+    #logger.root.removeHandler(h)
 
+logger = logging.getLogger("custom_logger")
 ########## Global Google Cloud Setup ##########
 
 LOCAL_BASE_PATH = "results/raw"
@@ -190,13 +191,10 @@ def load_csv_with_converters(file_path, euro_columns = list(), sep=';', dtypes= 
    
     converters = {col: parse_euro_number for col in euro_columns}
 
-    logging.info(f"Loading CSV file: {file_path}")
+    logger.info(f"Loading CSV file: {file_path}")
     
     return pd.read_csv(file_path, sep=sep, converters=converters, dtype=dtypes) """
 
-
-# Set up basic logging
-logging.basicConfig(filename = str(LOG_FILE),level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s', filemode="w")
 
 def load_json_with_converters(file_path, euro_columns=list(), dtypes=dict()):
     """
@@ -206,7 +204,7 @@ def load_json_with_converters(file_path, euro_columns=list(), dtypes=dict()):
         with open(file_path, "r", encoding="utf-8") as f:
             data = json.load(f)
     except json.JSONDecodeError as e:
-        logging.error(f"Invalid JSON in {file_path}: {e}")
+        logger.error(f"Invalid JSON in {file_path}: {e}")
         return None
 
     # If the JSON is a single object, wrap into list for DataFrame compatibility
@@ -232,22 +230,22 @@ def load_json_with_converters(file_path, euro_columns=list(), dtypes=dict()):
             try:
                 df[col] = df[col].astype(dtype)
             except Exception as e:
-                logging.warning(f"Failed to convert column {col} to {dtype} in {file_path}: {e}")
+                logger.warning(f"Failed to convert column {col} to {dtype} in {file_path}: {e}")
 
     return df
 
 
-def combine_json_files(files: list, file_type: str = "files",euro_columns=list(), dtypes=dict()) -> Optional[pd.DataFrame]:
-    """
+"""def combine_json_files(files: list, file_type: str = "files",euro_columns=list(), dtypes=dict()) -> Optional[pd.DataFrame]:
+    
     Combines multiple JSON files into a single pandas DataFrame.
 
     Same behavior as combine_csv_files, with:
       - error handling
       - single-file optimization
       - data type conversions
-    """
+    
     if not files:
-        logging.warning(f"No {file_type} found.")
+        logger.warning(f"No {file_type} found.")
         return None
 
     # --- Optimize single file case ---
@@ -257,10 +255,10 @@ def combine_json_files(files: list, file_type: str = "files",euro_columns=list()
             df = load_json_with_converters(file_path, euro_columns, dtypes=dtypes)
             if df is None:
                 return None
-            logging.info(f"Successfully read single JSON file: {file_path}")
+            logger.info(f"Successfully read single JSON file: {file_path}")
             return df
         except FileNotFoundError:
-            logging.error(f"File not found: {file_path}")
+            logger.error(f"File not found: {file_path}")
             return None
 
     # --- Multi-file case ---
@@ -270,22 +268,22 @@ def combine_json_files(files: list, file_type: str = "files",euro_columns=list()
             df = load_json_with_converters(f, euro_columns, dtypes=dtypes)
             if df is not None:
                 dataframes.append(df)
-                logging.info(f"Successfully read JSON file: {f}")
+                logger.info(f"Successfully read JSON file: {f}")
         except FileNotFoundError:
-            logging.error(f"File not found: {f}")
+            logger.error(f"File not found: {f}")
             continue
         except json.JSONDecodeError as e:
-            logging.error(f"Error reading JSON file {f}: {e}")
+            logger.error(f"Error reading JSON file {f}: {e}")
             continue
 
     if not dataframes:
-        logging.warning(f"No valid {file_type} JSON dataframes to process.")
+        logger.warning(f"No valid {file_type} JSON dataframes to process.")
         return None
 
     combined_df = pd.concat(dataframes, ignore_index=True)
-    logging.info(f"Successfully concatenated {len(dataframes)} {file_type}.")
+    logger.info(f"Successfully concatenated {len(dataframes)} {file_type}.")
 
-    return combined_df
+    return combined_df """
 
 
 ###### Airflow things ##########
@@ -325,7 +323,7 @@ def replace_nan(obj):
     with open(full_path, "w", encoding="utf-8") as f:
         json.dump(json_ready, f, indent=4, ensure_ascii=False,allow_nan=False)
 
-    print(f"Saved cleaned data: {full_path}")
+    logger.info(f"Saved cleaned data: {full_path}")
     return json_ready"""
 
 def save_clean_parquet(endpoint: str, df: pd.DataFrame, base_path: Path):
@@ -339,8 +337,42 @@ def save_clean_parquet(endpoint: str, df: pd.DataFrame, base_path: Path):
 
     df.to_parquet(full_path,index=False)
 
-    print(f"Saved cleaned data: {full_path}")
+    logger.info(f"Saved cleaned data: {full_path}")
     return full_path
+
+
+def clean_parquet_history(endpoint: str, base_path: Path, days_to_keep: int) -> None:
+    """Keep only the last N parquet files for the given endpoint."""
+    endpoint_name = endpoint.lstrip("/").replace("/", "-") or "root"
+    folder = Path(base_path)
+
+    if not folder.exists():
+        return
+
+    files = []
+    for f in folder.glob(f"*-{endpoint_name}.parquet"):
+        try:
+
+            date_part = f.name.split("-", 1)[0]
+            dt = datetime.strptime(date_part, "%Y-%m-%d").date()
+            files.append((dt, f))
+        except Exception:
+            continue
+
+    if not files:
+        return
+
+    files.sort(key=lambda x: x[0], reverse=True)
+
+    keep = files[:days_to_keep]
+    delete = files[days_to_keep:]
+
+    logger.info(f"[clean_parquet_history] Keeping: {[f.name for _, f in keep]}")
+    logger.info(f"[clean_parquet_history] Deleting: {[f.name for _, f in delete]}")
+
+    for _, old_file in delete:
+        old_file.unlink(missing_ok=True)
+
 
 def extract_source_and_endpoint(file_path: Path) -> Tuple[str, str]:
     endpoint = file_path.parent.parent.name
@@ -361,8 +393,9 @@ def process_erp_files(file_path: Path):
         )
 
     df = df[[c for c in columns if c in df.columns]]
-    print("Saveing parquet : ", LOCAL_STAGED_PATH / source_type)
+    logger.info("Saveing parquet : ", LOCAL_STAGED_PATH / source_type)
     saved_parquet = save_clean_parquet(endpoint, df, LOCAL_STAGED_PATH / source_type)
+    clean_parquet_history(endpoint, LOCAL_STAGED_PATH / source_type, days_to_keep=2)
     return saved_parquet
 
 
@@ -476,7 +509,7 @@ def load_latest(
     file_name = f"Combined{endpoint.capitalize()}.parquet"
     output_file = outdir / f"{date_str}-{file_name}"
     df.to_json(output_file, orient="records", indent=2, force_ascii=False)
-    print("Saved combined:", output_file)
+    logger.info("Saved combined:", output_file)
     return output_file"""
 
 def save_combined_parquet(df: pd.DataFrame, date_str: str, outdir: Path, endpoint :str):
@@ -484,14 +517,14 @@ def save_combined_parquet(df: pd.DataFrame, date_str: str, outdir: Path, endpoin
     file_name = f"Combined{endpoint.capitalize()}.parquet"
     output_file = outdir / f"{date_str}-{file_name}"
     df.to_parquet(output_file,index=False)
-    print("Saved combined:", output_file)
+    logger.info("Saved combined:", output_file)
     return str(output_file)
 
 
 #For error handling in debugging, might delete later
 def check_duplicates(df: pd.DataFrame):
     dups = df.columns[df.columns.duplicated(keep=False)]
-    print("Duplikaattikolumnit:", list(dups))
+    logger.info("Duplikaattikolumnit:", list(dups))
 
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
@@ -505,7 +538,7 @@ def combine_sales_data(staged_path: Path, mapping: dict):
     date_customers, customers = load_latest(staged_path, "Customers",LoadMode.STAGED, mapping["Customers"])
 
     if len({date_rows, date_orders, date_customers}) > 1:
-        print("⚠ WARNING: Source dates differ!", date_rows, date_orders, date_customers)
+        logger.info("⚠ WARNING: Source dates differ!", date_rows, date_orders, date_customers)
 
 
     rows = rows.rename(columns={
@@ -531,7 +564,10 @@ def combine_sales_data(staged_path: Path, mapping: dict):
     merged = merged.drop(columns=["Id_cust"], errors="ignore")
     date_str = datetime.now().strftime("%Y-%m-%d")
     endpoint = "sales"
-    return save_combined_parquet(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
+    saved_parquet =  save_combined_parquet(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
+    clean_parquet_history(endpoint, LOCAL_COMBINED_PATH / endpoint, days_to_keep=2)
+    return saved_parquet
+
     
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
@@ -544,7 +580,7 @@ def combine_inventory_data(staged_path: Path, mapping: dict):
     date_parts, parts = load_latest(staged_path, "Parts",LoadMode.STAGED, mapping["Parts"])
 
     if len({date_codes, date_parts}) > 1:
-        print("⚠ WARNING: Source dates differ!", date_codes, date_parts)
+        logger.info("⚠ WARNING: Source dates differ!", date_codes, date_parts)
 
     merged = parts.merge(
         part_codes,
@@ -559,7 +595,9 @@ def combine_inventory_data(staged_path: Path, mapping: dict):
     date_str = datetime.now().strftime("%Y-%m-%d")
     endpoint = "inventory"
 
-    return save_combined_parquet(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
+    saved_parquet =  save_combined_parquet(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
+    clean_parquet_history(endpoint, LOCAL_COMBINED_PATH / endpoint, days_to_keep=2)
+    return saved_parquet
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
 def combine_manufacturing_data_task(staged_path: str, mapping: dict):
@@ -610,7 +648,9 @@ def combine_manufacturing_data(staged_path: Path, mapping: dict):
     date_str = datetime.now().strftime("%Y-%m-%d")
 
     endpoint = "manufacturing"
-    return save_combined_parquet(merged, date_str, LOCAL_COMBINED_PATH / endpoint,endpoint)
+    saved_parquet =  save_combined_parquet(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
+    clean_parquet_history(endpoint, LOCAL_COMBINED_PATH / endpoint, days_to_keep=2)
+    return saved_parquet
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
 def process_and_stage_fact_order_rows_task(combined_sales_path):
@@ -658,7 +698,7 @@ def process_and_stage_fact_order_rows(combined_sales_path: Path):
             save_df(fact_order_rows,"fact_order_rows",conn)
     
     except Exception as e:
-            logging.error("safe_df epäonnistui: %s", str(e))
+            logger.error("safe_df epäonnistui: %s", str(e))
             raise RuntimeError("save_df epäonnistui — katso app.log") from None
 
 
@@ -712,7 +752,7 @@ def process_and_stage_fact_workphases(combined_manufacturing_path: Path):
             save_df(fact_workphases,"fact_workphases",conn)
     
     except Exception as e:
-            logging.error("safe_df epäonnistui: %s", str(e))
+            logger.error("safe_df epäonnistui: %s", str(e))
             raise RuntimeError("save_df epäonnistui — katso app.log") from None
 
 
@@ -827,7 +867,7 @@ def process_dim():
             save_df(order_types,"dim_order_type",conn)
     
     except Exception as e:
-            logging.error("safe_df epäonnistui: %s", str(e))
+            logger.error("safe_df epäonnistui: %s", str(e))
             raise RuntimeError("save_df epäonnistui — katso app.log") from None
 
 
@@ -845,10 +885,10 @@ def route_manufacturing_files_to_processors(files: list):
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
 def process_erp_files_task(my_files):
-    print("Processing files")
+    logger.info("Processing files")
     for endpoint, files in my_files.items():
         for file_path in files:
-            print(file_path)
+            logger.info(file_path)
             process_erp_files(Path(file_path))
 
 @task()
