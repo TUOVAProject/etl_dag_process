@@ -65,8 +65,8 @@ def fetch_manufacturing():
     for ep in endpoints:
         data = get_manufacturing_data(ep)
         save_parquet(ep,data,base_path="results/raw/manufacturing")
+        clean_folder(ep, days_to_keep = 2, base_path="results/raw/manufacturing")
         results[ep] = data
-    clean_folder(ep, days_to_keep = 2, base_path="results/raw/manufacturing")
     return results
 
 

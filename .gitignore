@@ -15,3 +15,4 @@ docker-compose.yaml
 logs/
 dags/app.log
 src/app.log
+app_log.log

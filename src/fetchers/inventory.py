@@ -43,8 +43,8 @@ def fetch_inventory():
     for ep in endpoints:
         data = get_inventory_data(ep)
         save_parquet(ep,data,base_path="results/raw/inventory")
+        clean_folder(ep, days_to_keep = 2, base_path="results/raw/inventory")
         results[ep] = data
-    clean_folder(ep, days_to_keep = 2, base_path="results/raw/inventory")
     return results
 
 

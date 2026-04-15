@@ -48,8 +48,8 @@ def fetch_sales():
     for ep in endpoints:
         data = get_sales_data(ep)
         save_parquet(ep,data,base_path="results/raw/sales")
+        clean_folder(ep, days_to_keep = 2, base_path="results/raw/sales")
         results[ep] = data
-    clean_folder(ep, days_to_keep = 2, base_path="results/raw/sales")
     return results
 
 

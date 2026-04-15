@@ -19,6 +19,7 @@ from airflow.utils.context import Context
 
 from enum import Enum
 
+#Comment these for local testing
 from database.connection import get_engine
 from database.writers import save_df
 from fetchers.common import fetch_common
@@ -27,10 +28,12 @@ from fetchers.manufacturing import fetch_manufacturing
 from fetchers.sales import fetch_sales
 from auth.auth import get_token
 
+#When testing locally use src.config.erp_config import path
 from config.erp_config import (
     ERP_COMMON_SOURCE_TYPES,ERP_INVENTORY_SOURCE_TYPES,ERP_MANUFACTURING_SOURCE_TYPES,
     ERP_SALES_SOURCE_TYPES,ERP_SOURCE_CONFIG,euro_columns,fact_order_rows,
-    combine_inventory_tables,combine_manufacturing_tables,combine_sales_tables
+    combine_inventory_tables,combine_manufacturing_tables,combine_sales_tables,
+    combine_reporting_tables
 )
 
 
@@ -345,6 +348,9 @@ def clean_parquet_history(endpoint: str, base_path: Path, days_to_keep: int) -> 
     """Keep only the last N parquet files for the given endpoint."""
     endpoint_name = endpoint.lstrip("/").replace("/", "-") or "root"
     folder = Path(base_path)
+    filename_pattern = re.compile(
+        rf"(?P<date>\d{{4}}-\d{{2}}-\d{{2}})-{re.escape(endpoint_name)}\.parquet$"
+    )
 
     if not folder.exists():
         return
@@ -352,8 +358,11 @@ def clean_parquet_history(endpoint: str, base_path: Path, days_to_keep: int) -> 
     files = []
     for f in folder.glob(f"*-{endpoint_name}.parquet"):
         try:
+            match = filename_pattern.match(f.name)
+            if match is None:
+                continue
 
-            date_part = f.name.split("-", 1)[0]
+            date_part = match.group("date")
             dt = datetime.strptime(date_part, "%Y-%m-%d").date()
             files.append((dt, f))
         except Exception:
@@ -542,26 +551,29 @@ def combine_sales_data(staged_path: Path, mapping: dict):
 
 
     rows = rows.rename(columns={
+        "Id": "OrderRowId",
         "OrderDate": "OrderRowDate"
+    })
+
+    orders = orders.rename(columns={
+        "Id": "OrderId"
+    })
+
+    customers = customers.rename(columns={
+        "Id": "CustomerRecordId"
     })
 
     merged = rows.merge(
         orders,
         left_on="ParentOrderId",
-        right_on="Id",
-        suffixes=("_row", "_order")
+        right_on="OrderId"
     )
-
-    merged = merged.drop(columns=["Id_order"], errors="ignore")
 
     merged = merged.merge(
         customers,
         left_on="CustomerId",
-        right_on="Id",
-        suffixes=("", "_cust")
+        right_on="CustomerRecordId"
     )
-
-    merged = merged.drop(columns=["Id_cust"], errors="ignore")
     date_str = datetime.now().strftime("%Y-%m-%d")
     endpoint = "sales"
     saved_parquet =  save_combined_parquet(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
@@ -653,6 +665,73 @@ def combine_manufacturing_data(staged_path: Path, mapping: dict):
     return saved_parquet
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
+def combine_manufacturing_reportings_task(staged_path: str, mapping: dict):
+    return combine_manufacturing_reportings(Path(staged_path),mapping)
+
+def combine_manufacturing_reportings(staged_path: Path, mapping: dict):
+
+    _, manufacturing_orders = load_latest(
+        staged_path,
+        "ManufacturingOrders",
+        LoadMode.STAGED,
+        mapping["ManufacturingOrders"]
+    )
+
+    _, orderOperations = load_latest(
+        staged_path,
+        "ManufacturingOrderOperations",
+        LoadMode.STAGED,
+        mapping["ManufacturingOrderOperations"]
+    )
+
+    _, reportingRows = load_latest(
+        staged_path,
+        "ManufacturingOrderOperationReportings",
+        LoadMode.STAGED,
+        mapping["ManufacturingOrderOperationReportings"]
+    )
+
+    manufacturing_orders = manufacturing_orders.rename(columns={
+        "Id": "ManufacturingOrderId"
+    })
+
+    orderOperations = orderOperations.rename(columns={
+        "Id": "ManufacturingOrderOperationId",
+    })
+
+    reportingRows = reportingRows.rename(columns={
+        "Id": "ReportingId",
+        "OperationId": "ManufacturingOrderOperationId"
+    })
+
+    merged = reportingRows.merge(
+        orderOperations,
+        on="ManufacturingOrderOperationId",
+        how="left"
+    )
+
+    merged = merged.merge(
+        manufacturing_orders,
+        on="ManufacturingOrderId",
+        how="left"
+    )
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    endpoint = "manufacturing"
+
+    saved = save_combined_parquet(
+        merged,
+        date_str,
+        LOCAL_COMBINED_PATH / endpoint,
+        endpoint
+    )
+
+    clean_parquet_history(endpoint, LOCAL_COMBINED_PATH / endpoint, days_to_keep=7)
+
+    return saved
+
+
+@task(trigger_rule=TriggerRule.ALL_SUCCESS)
 def process_and_stage_fact_order_rows_task(combined_sales_path):
     path = Path(combined_sales_path)
     return process_and_stage_fact_order_rows(path)
@@ -662,9 +741,9 @@ def process_and_stage_fact_order_rows(combined_sales_path: Path):
     combined_sales = pd.read_parquet(combined_sales_path)
 
     fact_order_rows = pd.DataFrame({
-        "order_row_id": to_int64(combined_sales["Id"]),
-        "order_number": pd.to_numeric(combined_sales["OrderNumber"],errors="coerce"),
-        "work_number": pd.NA,
+        "order_row_id": to_int64(combined_sales["OrderRowId"]),
+        "order_number": combined_sales["OrderNumber"],
+        "work_number": combined_sales["LinkedManufacturingOrderId"],
         "customer_id": to_int64(combined_sales["CustomerId"]),
         "seller_id": to_int64(combined_sales["SellerId"]),
         "article_id": to_int64(combined_sales["PartId"]),
@@ -691,11 +770,13 @@ def process_and_stage_fact_order_rows(combined_sales_path: Path):
         "new_article":            pd.NA,
         "order_complete":         get_date_key(combined_sales["NewFinishDate"]),
     })
+
     engine = get_engine()
 
     try:
         with engine.begin() as conn:
-            save_df(fact_order_rows,"fact_order_rows",conn)
+            save_df(fact_order_rows,"fact_order_rows",conn,if_exists="truncate_insert")
+            logger.info("Fact order rows saved!")
     
     except Exception as e:
             logger.error("safe_df epäonnistui: %s", str(e))
@@ -710,12 +791,12 @@ def process_and_stage_fact_workphases_task(combined_manufacturing_path):
 def process_and_stage_fact_workphases(combined_manufacturing_path: Path):
 
     combined_manufacturing = pd.read_parquet(combined_manufacturing_path)
-
+    logger.info(combined_manufacturing)
     fact_workphases = pd.DataFrame({
         "workphase_id": to_int64(combined_manufacturing["ManufacturingOrderOperationId"]),
         "order_row_id": to_int64(combined_manufacturing["CustomerOrderId"]),
         "work_number": to_int64(combined_manufacturing["OperationNumber"]),
-        #"order_number" : combined_manufacturing["OrderNumber"],
+        "order_number" : combined_manufacturing["OrderNumber"],
         "machine_id": to_int64(combined_manufacturing["WorkCenterId"]),
         "article_id": to_int64(combined_manufacturing["PartId"]),
         "start_date_planned" : get_date_key(combined_manufacturing["PlannedStartDate"]),
@@ -744,12 +825,65 @@ def process_and_stage_fact_workphases(combined_manufacturing_path: Path):
         "single_item_time_actual_min": pd.NA,
         "has_related_events": pd.NA
     })
-
     engine = get_engine()
 
     try:
         with engine.begin() as conn:
-            save_df(fact_workphases,"fact_workphases",conn)
+            save_df(fact_workphases,"fact_workphases",conn,if_exists="truncate_insert")
+            logger.info("Fact workphases saved!")
+    
+    except Exception as e:
+            logger.error("safe_df epäonnistui: %s", str(e))
+            raise RuntimeError("save_df epäonnistui — katso app.log") from None
+    
+
+@task(trigger_rule=TriggerRule.ALL_SUCCESS)
+def process_and_stage_fact_machine_events_task(combined_manufacturing_reporting_path):
+    path = Path(combined_manufacturing_reporting_path)
+    return process_and_stage_fact_machine_events(path)
+
+def process_and_stage_fact_machine_events(combined_manufacturing_reporting_path: Path):
+
+    combined_reportings = pd.read_parquet(combined_manufacturing_reporting_path)
+
+    logger.info(combined_reportings)
+    fact_machine_events = pd.DataFrame({
+        "machine_event_id": to_int64(combined_reportings["ReportingId"]),
+        "event_type_id": pd.NA,
+        "workphase_id": to_int64(combined_reportings["ManufacturingOrderOperationId"]),
+        "work_number" : pd.NA,
+        "phase_number": combined_reportings["OperationNumber"],
+        "machine_id": to_int64(combined_reportings["WorkCenterId"]),
+        "article_id" : to_int64(combined_reportings["PartId"]),
+        "user_id": pd.NA,
+        "program_id": pd.NA,
+        "start_date": ticks_to_minutes(combined_reportings["ActualStartDate"]),
+        "end_date": ticks_to_minutes(combined_reportings["ActualFinishDate"]),
+        "start_time": pd.NA,
+        "end_time": pd.NA,
+        "start_at": pd.NA,
+        "end_at": pd.NA,
+        "duration_min": ticks_to_minutes(combined_reportings["UnitTime"]),
+        "single_item_time_min": ticks_to_minutes(combined_reportings["UnitTime"] + combined_reportings["SetupTime"]),
+        "produced_qty": combined_reportings["Quantity"],
+        "effective_production_min": pd.NA,
+        "effective_production_pct": pd.NA,
+        "ineffective_production_min": pd.NA,
+        "machine_active_pct": pd.NA,
+        "idle_min": pd.NA,
+        "idle_pct": pd.NA,
+        "power_off_min": pd.NA,
+        "power_off_pct": pd.NA,
+        "exception_id": pd.NA,
+        "power_consumpiton_kwh": pd.NA,
+        "notes": pd.NA,
+    })
+    engine = get_engine()
+
+    try:
+        with engine.begin() as conn:
+            save_df(fact_machine_events,"fact_machine_events",conn,if_exists="truncate_insert")
+            logger.info("Fact workphases saved!")
     
     except Exception as e:
             logger.error("safe_df epäonnistui: %s", str(e))
@@ -918,6 +1052,7 @@ def fetch_sales_task():
     catchup=False,
     tags=["gcs", "etl", "demo"],
 )
+
 def erp_file_processor():
 
     authenticate = get_token_task()
@@ -940,11 +1075,14 @@ def erp_file_processor():
     combined_orders = combine_manufacturing_data_task(str(LOCAL_STAGED_PATH / "manufacturing"),combine_manufacturing_tables)
     combined_sales = combine_sales_data_task(str(LOCAL_STAGED_PATH / "sales"), combine_sales_tables)
     combined_inventory = combine_inventory_data_task(str(LOCAL_STAGED_PATH / "inventory"), combine_inventory_tables)
+    combined_reportings = combine_manufacturing_reportings_task(str(LOCAL_STAGED_PATH / "manufacturing"),combine_reporting_tables)
 
     processed_orders = process_and_stage_fact_order_rows_task(combined_sales)
     processed_workphases = process_and_stage_fact_workphases_task(combined_orders)
 
     processed_dim = process_dim_task()
+
+    processed_machine_events = process_and_stage_fact_machine_events_task(combined_reportings)
 
     
     authenticate >> t_common >> t_inventory >> t_manufacturing >> t_sales
@@ -958,11 +1096,12 @@ def erp_file_processor():
     t_sales >> sales_files >> process_sales >> combined_sales
 
     combined_sales >> processed_orders
-    combined_orders >> processed_workphases
+    combined_orders >> processed_workphases 
 
     [processed_orders, processed_workphases] >> processed_dim
 
-    
+    processed_dim >> processed_machine_events
+
 """
 #Test for debugging the airflow behaviour without aiflow
 def erp_file_processor_test():
@@ -990,11 +1129,11 @@ def erp_file_processor_test():
     combined_orders = combine_manufacturing_data(LOCAL_STAGED_PATH / "manufacturing",combine_manufacturing_tables)
     combined_sales = combine_sales_data(LOCAL_STAGED_PATH / "sales", combine_sales_tables)
     combined_inventory = combine_inventory_data(LOCAL_STAGED_PATH / "inventory", combine_inventory_tables)
-    process_and_stage_fact_order_rows(combined_sales)
-    process_and_stage_fact_workphases(combined_orders)
-    process_dim()
-
+    combined_reportings = combine_manufacturing_reportings(LOCAL_STAGED_PATH / "manufacturing",combine_reporting_tables)
+    process_and_stage_fact_order_rows(Path(combined_sales))
+    process_and_stage_fact_workphases(Path(combined_orders))
+    process_and_stage_fact_workphases(Path(combined_reportings))
+    #process_dim()
 """
     
-
 dag_instance = erp_file_processor()
