@@ -183,6 +183,14 @@ def to_int64(series: pd.Series) -> pd.Series:
 
     return pd.to_numeric(series, errors="coerce").astype("Int64")
 
+def to_int32(series: pd.Series) -> pd.Series:
+    
+    series = series.astype("string").str.strip()
+
+    series = series.replace("", pd.NA)
+
+    return pd.to_numeric(series, errors="coerce").astype("Int32")
+
 def to_float64(series: pd.Series) -> pd.Series:
     if pd.api.types.is_string_dtype(series) or pd.api.types.is_object_dtype(series):
         series = series.astype("string").str.strip().replace("", pd.NA)
@@ -717,7 +725,7 @@ def combine_manufacturing_reportings(staged_path: Path, mapping: dict):
     )
 
     date_str = datetime.now().strftime("%Y-%m-%d")
-    endpoint = "manufacturing"
+    endpoint = "reportings"
 
     saved = save_combined_parquet(
         merged,
@@ -791,7 +799,7 @@ def process_and_stage_fact_workphases_task(combined_manufacturing_path):
 def process_and_stage_fact_workphases(combined_manufacturing_path: Path):
 
     combined_manufacturing = pd.read_parquet(combined_manufacturing_path)
-    logger.info(combined_manufacturing)
+    logger.info(combined_manufacturing.keys())
     fact_workphases = pd.DataFrame({
         "workphase_id": to_int64(combined_manufacturing["ManufacturingOrderOperationId"]),
         "order_row_id": to_int64(combined_manufacturing["CustomerOrderId"]),
@@ -846,25 +854,33 @@ def process_and_stage_fact_machine_events(combined_manufacturing_reporting_path:
 
     combined_reportings = pd.read_parquet(combined_manufacturing_reporting_path)
 
-    logger.info(combined_reportings)
+    combined_reportings["SetupTime"] = (
+        combined_reportings["SetupTime"]
+        .fillna(0)
+        .astype("int64")
+    )
+    
+    unit_time_min = ticks_to_minutes(combined_reportings["UnitTime"])
+    setup_time_min = ticks_to_minutes(combined_reportings["SetupTime"])
+
     fact_machine_events = pd.DataFrame({
         "machine_event_id": to_int64(combined_reportings["ReportingId"]),
-        "event_type_id": pd.NA,
+        "event_type_id": to_int32(combined_reportings["Type"]),
         "workphase_id": to_int64(combined_reportings["ManufacturingOrderOperationId"]),
         "work_number" : pd.NA,
         "phase_number": combined_reportings["OperationNumber"],
         "machine_id": to_int64(combined_reportings["WorkCenterId"]),
         "article_id" : to_int64(combined_reportings["PartId"]),
-        "user_id": pd.NA,
+        "user_id": to_int64(combined_reportings["EmployeeId"]),
         "program_id": pd.NA,
-        "start_date": ticks_to_minutes(combined_reportings["ActualStartDate"]),
-        "end_date": ticks_to_minutes(combined_reportings["ActualFinishDate"]),
+        "start_date": get_date_key(combined_reportings["ActualStartDate"]),
+        "end_date": get_date_key(combined_reportings["ActualFinishDate"]),
         "start_time": pd.NA,
-        "end_time": pd.NA,
+        "end_time": get_date_key(combined_reportings["ActualReportedDate"]),
         "start_at": pd.NA,
         "end_at": pd.NA,
-        "duration_min": ticks_to_minutes(combined_reportings["UnitTime"]),
-        "single_item_time_min": ticks_to_minutes(combined_reportings["UnitTime"] + combined_reportings["SetupTime"]),
+        "duration_min": pd.NA,
+        "single_item_time_min": unit_time_min + setup_time_min,
         "produced_qty": combined_reportings["Quantity"],
         "effective_production_min": pd.NA,
         "effective_production_pct": pd.NA,
@@ -875,7 +891,7 @@ def process_and_stage_fact_machine_events(combined_manufacturing_reporting_path:
         "power_off_min": pd.NA,
         "power_off_pct": pd.NA,
         "exception_id": pd.NA,
-        "power_consumpiton_kwh": pd.NA,
+        "power_consumption_kwh": pd.NA,
         "notes": pd.NA,
     })
     engine = get_engine()
@@ -883,7 +899,7 @@ def process_and_stage_fact_machine_events(combined_manufacturing_reporting_path:
     try:
         with engine.begin() as conn:
             save_df(fact_machine_events,"fact_machine_events",conn,if_exists="truncate_insert")
-            logger.info("Fact workphases saved!")
+            logger.info("Fact machine events saved!")
     
     except Exception as e:
             logger.error("safe_df epäonnistui: %s", str(e))
@@ -1087,7 +1103,7 @@ def erp_file_processor():
     
     authenticate >> t_common >> t_inventory >> t_manufacturing >> t_sales
 
-    t_manufacturing >> manufacturing_files >> process_manufacturing >> combined_orders
+    t_manufacturing >> manufacturing_files >> process_manufacturing >> combined_orders >> combined_reportings
 
     t_common >> common_files >> process_common
 
@@ -1132,7 +1148,7 @@ def erp_file_processor_test():
     combined_reportings = combine_manufacturing_reportings(LOCAL_STAGED_PATH / "manufacturing",combine_reporting_tables)
     process_and_stage_fact_order_rows(Path(combined_sales))
     process_and_stage_fact_workphases(Path(combined_orders))
-    process_and_stage_fact_workphases(Path(combined_reportings))
+    process_and_stage_fact_machine_events(Path(combined_reportings))
     #process_dim()
 """
     
