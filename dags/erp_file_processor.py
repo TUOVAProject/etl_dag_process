@@ -799,7 +799,31 @@ def process_and_stage_fact_workphases_task(combined_manufacturing_path):
 def process_and_stage_fact_workphases(combined_manufacturing_path: Path):
 
     combined_manufacturing = pd.read_parquet(combined_manufacturing_path)
-    logger.info(combined_manufacturing.keys())
+    
+    combined_manufacturing["PlannedStartDate"] = pd.to_datetime(
+        combined_manufacturing["PlannedStartDate"],
+        errors="coerce",
+        utc=True
+    )
+
+    combined_manufacturing["PlannedFinishDate"] = pd.to_datetime(
+        combined_manufacturing["PlannedFinishDate"],
+        errors="coerce",
+        utc=True
+    )
+
+    combined_manufacturing["ActualStartDate"] = pd.to_datetime(
+        combined_manufacturing["ActualStartDate"],
+        errors="coerce",
+        utc=True
+    )
+
+    combined_manufacturing["ActualFinishDate"] = pd.to_datetime(
+        combined_manufacturing["ActualFinishDate"],
+        errors="coerce",
+        utc=True
+    )
+
     fact_workphases = pd.DataFrame({
         "workphase_id": to_int64(combined_manufacturing["ManufacturingOrderOperationId"]),
         "order_row_id": to_int64(combined_manufacturing["CustomerOrderId"]),
@@ -818,8 +842,8 @@ def process_and_stage_fact_workphases(combined_manufacturing_path: Path):
         "phase_id": to_int64(combined_manufacturing["OperationRowId"]),
         "start_timestamp_planned": pd.NA,
         "end_timestamp_planned": pd.NA,
-        "phase_duration_planned_min": (ticks_to_minutes(combined_manufacturing["ReportedUnitTime"]) + ticks_to_minutes(combined_manufacturing["ReportedSetupTime"])),
-        "phase_duration_actual_min": pd.NA,
+        "phase_duration_planned_min": (ticks_to_minutes(combined_manufacturing["PlannedUnitTime"]) + ticks_to_minutes(combined_manufacturing["PlannedSetupTime"])),
+        "phase_duration_actual_min": (ticks_to_minutes(combined_manufacturing["ReportedUnitTime"]) + ticks_to_minutes(combined_manufacturing["ReportedSetupTime"])),
         "planned_qty": pd.to_numeric(combined_manufacturing["PlannedQuantity"],errors="coerce"),
         "produced_qty": pd.to_numeric(combined_manufacturing["ReportedQuantity"],errors="coerce"),
         "rejected_qty": pd.to_numeric(combined_manufacturing["RejectedQuantity"],errors="coerce"),
@@ -827,10 +851,10 @@ def process_and_stage_fact_workphases(combined_manufacturing_path: Path):
         "phase_price_actual": pd.NA,
         "setup_time_planned_min": ticks_to_minutes(combined_manufacturing["PlannedSetupTime"]),
         "setup_time_actual_min": ticks_to_minutes(combined_manufacturing["ReportedSetupTime"]),
-        "production_time_planned_min": ticks_to_minutes(combined_manufacturing["ReportedUnitTime"]),
-        "production_time_actual_min": pd.NA,
-        "single_item_time_planned_min": (ticks_to_minutes(combined_manufacturing["ReportedUnitTime"]) / ticks_to_minutes(combined_manufacturing["ReportedQuantity"])),
-        "single_item_time_actual_min": pd.NA,
+        "production_time_planned_min": ticks_to_minutes(combined_manufacturing["PlannedUnitTime"]),
+        "production_time_actual_min": ticks_to_minutes(combined_manufacturing["ReportedUnitTime"]),
+        "single_item_time_planned_min" : (combined_manufacturing["PlannedFinishDate"] - combined_manufacturing["PlannedStartDate"]).dt.total_seconds() / 60,
+        "single_item_time_actual_min": (combined_manufacturing["ActualFinishDate"] - combined_manufacturing["ActualStartDate"]).dt.total_seconds() / 60,
         "has_related_events": pd.NA
     })
     engine = get_engine()
