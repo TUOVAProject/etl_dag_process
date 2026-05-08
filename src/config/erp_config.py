@@ -47,6 +47,14 @@ ERP_SALES_SOURCE_TYPES= [
     "erp_sales_salesPrices",
 ]
 
+ERP_PURCHASE_SOURCE_TYPES=[
+    "erp_purchase_orderRows",
+    "erp_puchase_orders",
+    "erp_purchase_orderInvoiceRows",
+    "erp_purchase_orderInvoices",
+    "erp_purchase_orderTypes"
+]
+
 
 
 ERP_SOURCE_CONFIG = {
@@ -64,6 +72,7 @@ ERP_SOURCE_CONFIG = {
     "inventory": {
         "PartCodes" : ["Id","Alias","Code","Description"],
         "Parts" : ["Id","PartNumber","Description","ActiveRevisionId","Alias","AveragePrice","CompanyId","PartCodeId","PreparationId","StandardPrice","ExtraDescription"],
+        "StockTransactions" : ["Id","PartNumber","PartId","BalanceChange","BalanceOnPartAfterChange","LoggingTimeStamp","DeliveryDate","WarehouseId","OrderNumber","StandardPrice","Price","ReportedPrice","Amount"]
     },
 
     "manufacturing" : {
@@ -104,6 +113,28 @@ ERP_SOURCE_CONFIG = {
         "InvoiceLogs" : ["Id","InvoiceId","InvoiceDate","PartId","PartNumber","PartCode","CustomerId","CustomerOrderId","OrderedQuantity","InvoicedQuantity","UnitCode","Price","PriceInCompanyCurrency","StandardPrice"],
         "OrderQuantityCustomerOrders" : [],
         "SalesPrices" : [],
+    },
+    "purchase" : {
+        "PurchaseOrderTypes" : [
+            "Id","Number","Description","Priority"
+        ],
+        "PurchaseOrders" : [
+            "Id","WarehouseId","Priority","ProjectId","OrderAmount","OrderAmountInCompanyCurrency","IsStockOrder","IsConfirmed",
+            "CustomerOrderId","OrderNumber","OrderDate", "Rows","Status","IsCredit","OrderTypeId", "OrderType", "CategoryString",
+        ],
+        "PurchaseOrderRows" : [
+            "Id","Position","OrderRowType","PartId","ParentRowId","DeliveryDate","RevisionId","OrderedQuantity","Price","Discount","ToolId","UnitId","WarehouseId","OrderDate",
+            "PriceInCompanyCurrency","SetupPriceInCompanyCurrency","StandardPrice","SetupPrice","PartStatus","OrderedQuantityInOrderUnit","RestQuantity","DeliveredQuantity",
+            "InitialDeliveryDate","DesiredDeliveryDate","IsConfirmed","LinkedStockOrderRowId","LinkedSubcontractingManufacturingOrderOperation","OriginatingPurchaseOrderDeliveryRowId",
+            "SubPartParentRowId","QuantityRatio","ParentOrderId","RowIndex","SumRowId","PriceOrigin","OrderQuantityId","OrderQuantity",
+        ],
+        
+        "PurchaseOrderInvoices":[
+            "Id","WarehouseId","Rows"
+        ],
+        "PurchaseOrderInvoiceRows" : [
+            "Id","PurchaseOrderDeliveryRowId","Price","SetupPrice","VatRateId","Discount","StandardPrice",
+        ],
     }
 }
 
@@ -130,7 +161,6 @@ combine_manufacturing_tables = {
     "ReportedUnitTime","PlannedUnitTime","ReportedSetupTime","PlannedSetupTime",
     "ManufacturingOrderId","OperationNumber","OperationRowId","PlannedStartDate","ActualStartDate",
     "PlannedFinishDate","ActualFinishDate","WorkshopOperationStatus","Description"],
-    
     "OperationRows" : ["Id","OrderOperation","UnitTime"]
 
 }
@@ -149,6 +179,19 @@ combine_reporting_tables = {
 combine_inventory_tables = {
     "PartCodes" : ["Id","Alias","Code","Description"],
     "Parts" : ["Id","PartNumber","Description","ActiveRevisionId","Alias","AveragePrice","CompanyId","PartCodeId","StandardPrice","ExtraDescription"]
+}
+
+combine_purchase_tables = {
+     "PurchaseOrders" : [
+            "Id","WarehouseId","ProjectId","OrderAmount","OrderAmountInCompanyCurrency","IsStockOrder","IsConfirmed",
+            "CustomerOrderId","OrderNumber","OrderDate", "Rows","Status","OrderTypeId","CategoryString",
+            ],
+        "PurchaseOrderRows" : [
+            "Id","OrderRowType","PartId","ParentRowId","DeliveryDate","OrderedQuantity","Price","Discount","WarehouseId","OrderDate",
+            "StandardPrice","SetupPrice","RestQuantity","DeliveredQuantity",
+            "IsConfirmed","LinkedSubcontractingManufacturingOrderOperation",
+            "SubPartParentRowId","ParentOrderId","PriceOrigin","OrderQuantityId","OrderQuantity",
+            ],
 }
 
 

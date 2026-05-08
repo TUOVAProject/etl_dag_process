@@ -26,13 +26,14 @@ from fetchers.common import fetch_common
 from fetchers.inventory import fetch_inventory
 from fetchers.manufacturing import fetch_manufacturing
 from fetchers.sales import fetch_sales
+from fetchers.purchases import fetch_purchases
 from auth.auth import get_token
 
 #When testing locally use src.config.erp_config import path
 from config.erp_config import (
-    ERP_COMMON_SOURCE_TYPES,ERP_INVENTORY_SOURCE_TYPES,ERP_MANUFACTURING_SOURCE_TYPES,
+    ERP_COMMON_SOURCE_TYPES,ERP_INVENTORY_SOURCE_TYPES,ERP_PURCHASE_SOURCE_TYPES,ERP_MANUFACTURING_SOURCE_TYPES,
     ERP_SALES_SOURCE_TYPES,ERP_SOURCE_CONFIG,euro_columns,fact_order_rows,
-    combine_inventory_tables,combine_manufacturing_tables,combine_sales_tables,
+    combine_inventory_tables,combine_manufacturing_tables,combine_sales_tables,combine_purchase_tables,
     combine_reporting_tables
 )
 
@@ -46,6 +47,11 @@ logger = logging.getLogger("custom_logger")
 LOCAL_BASE_PATH = "results/raw"
 LOCAL_STAGED_PATH = Path("results/staged")
 LOCAL_COMBINED_PATH = Path("results/combined")
+"""OUTPUT_EXCEL_FOLDER = Path("/home/sasu/TUOVA/excel_tietomalli")
+OUTPUT_EXCEL_FOLDER.mkdir(parents=True, exist_ok=True)
+
+DATE_STR = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+EXCEL_PATH = OUTPUT_EXCEL_FOLDER / f"tietomalli_{DATE_STR}.xlsx"""
 
 
 DATE_FMT = "%Y-%m-%d"
@@ -588,6 +594,34 @@ def combine_sales_data(staged_path: Path, mapping: dict):
     clean_parquet_history(endpoint, LOCAL_COMBINED_PATH / endpoint, days_to_keep=2)
     return saved_parquet
 
+
+@task(trigger_rule=TriggerRule.ALL_SUCCESS)
+def combine_material_data_task(combined_sales_path:str,staged_path: str, mapping: dict):
+    return combine_material_data(Path(combined_sales_path),Path(staged_path),mapping)
+
+
+def combine_material_data(combined_sales_path: Path,staged_path: Path, mapping: dict):
+    combined_sales = pd.read_parquet(combined_sales_path)
+    date_materials, materials = load_latest(staged_path, "StockTransactions",LoadMode.STAGED, mapping["StockTransactions"])
+
+    if len({date_materials}) > 1:
+        logger.info("⚠ WARNING: Source dates differ!", date_materials)
+
+
+    merged = materials.merge(
+        combined_sales,
+        left_on="ParentOrderId",
+        right_on="OrderId"
+    )
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    endpoint = "sales"
+    saved_parquet =  save_combined_parquet(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
+    clean_parquet_history(endpoint, LOCAL_COMBINED_PATH / endpoint, days_to_keep=2)
+    return saved_parquet
+
+
+
     
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
@@ -671,6 +705,62 @@ def combine_manufacturing_data(staged_path: Path, mapping: dict):
     saved_parquet =  save_combined_parquet(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
     clean_parquet_history(endpoint, LOCAL_COMBINED_PATH / endpoint, days_to_keep=2)
     return saved_parquet
+
+@task(trigger_rule=TriggerRule.ALL_SUCCESS)
+def combine_purchase_data_task(staged_path: str, mapping: dict):
+    return combine_purchase_data(Path(staged_path),mapping)
+
+def combine_purchase_data(staged_path: Path, mapping: dict):
+    _, purchase_orders = load_latest(
+        staged_path,
+        "PurchaseOrders",
+        LoadMode.STAGED,
+        mapping["PurchaseOrders"]
+    )
+
+    _, purchase_order_rows = load_latest(
+        staged_path,
+        "PurchaseOrderRows",
+        LoadMode.STAGED,
+        mapping["PurchaseOrderRows"]
+    )
+
+
+    purchase_orders = purchase_orders.rename(columns={
+        "Id": "PurchaseOrderId",
+        "OrderDate" : "PurchaseOrderDate",
+        "WarehouseId" : "PurchaseOrderWarehouseId",
+        "IsConfirmed" : "PurchaseOrderIsConfirmed"
+    })
+
+    purchase_order_rows = purchase_order_rows.rename(columns={
+        "Id": "PurchaseOrderRowId",
+        "OrderDate" : "PurchaseOrderRowDate",
+        "WarehouseId" : "PurchaseOrderRowWarehouseId",
+        "IsConfirmed" : "PurchaseOrderRowIsConfirmed"
+    })
+
+    
+    merged = purchase_order_rows.merge(
+        purchase_orders,
+        left_on="ParentOrderId",
+        right_on="PurchaseOrderId",
+        how="left"
+    )
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    endpoint = "purchase"
+
+    saved = save_combined_parquet(
+        merged,
+        date_str,
+        LOCAL_COMBINED_PATH / endpoint,
+        endpoint
+    )
+
+    clean_parquet_history(endpoint, LOCAL_COMBINED_PATH / endpoint, days_to_keep=7)
+
+    return saved
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
 def combine_manufacturing_reportings_task(staged_path: str, mapping: dict):
@@ -760,7 +850,7 @@ def process_and_stage_fact_order_rows(combined_sales_path: Path):
         "start_date_actual":      pd.NA,
         "end_date_planned":       pd.NA,
         "end_date_actual":        get_date_key(combined_sales["NewFinishDate"]),
-        "delivery_date_planned":  get_date_key(combined_sales["InitialDeliveryDate"]),
+        "delivery_date_planned":  get_date_key(combined_sales["DesiredDeliveryDate"]),
         "delivery_date_actual":   get_date_key(combined_sales["DeliveryDate"]),
         "order_state_id":         pd.to_numeric(combined_sales["Status"],errors="coerce"),
         "order_type_id":          pd.to_numeric(combined_sales["OrderRowType"],errors="coerce"),
@@ -779,6 +869,11 @@ def process_and_stage_fact_order_rows(combined_sales_path: Path):
         "order_complete":         get_date_key(combined_sales["NewFinishDate"]),
     })
 
+
+    """excel_path = append_df_to_excel(
+        fact_order_rows,"fact_order_rows"
+    )"""
+
     engine = get_engine()
 
     try:
@@ -789,6 +884,100 @@ def process_and_stage_fact_order_rows(combined_sales_path: Path):
     except Exception as e:
             logger.error("safe_df epäonnistui: %s", str(e))
             raise RuntimeError("save_df epäonnistui — katso app.log") from None
+
+
+
+
+
+
+"""def append_df_to_excel(df: pd.DataFrame, sheet_name: str):
+    logger.info("Saving excel: " + sheet_name)
+    df = clean_dataframe_for_excel(df)
+    df = convert_large_ints_to_str(df)
+    if EXCEL_PATH.exists():
+        # Append-mode: if_sheet_exists sallittu
+        with pd.ExcelWriter(
+            EXCEL_PATH,
+            engine="openpyxl",
+            mode="a",
+            if_sheet_exists="replace"
+        ) as writer:
+            df.to_excel(
+                writer,
+                sheet_name=sheet_name[:31],
+                index=False
+            )
+    else:
+        # Write-mode: EI if_sheet_exists
+        with pd.ExcelWriter(
+            EXCEL_PATH,
+            engine="openpyxl",
+            mode="w"
+        ) as writer:
+            df.to_excel(
+                writer,
+                sheet_name=sheet_name[:31],
+                index=False
+            )"""
+
+_ILLEGAL_EXCEL_CHARS_RE = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
+
+def convert_large_ints_to_str(
+    df: pd.DataFrame,
+    max_digits: int = 15
+) -> pd.DataFrame:
+    df = df.copy()
+
+    int_like_cols = df.select_dtypes(
+        include=["int64", "uint64", "Int64"]
+    ).columns
+
+    for col in int_like_cols:
+        s = df[col]
+
+        if s.notna().any():
+            max_len = s.dropna().astype(str).str.len().max()
+
+            if max_len > max_digits:
+                df[col] = s.astype("string")
+
+    return df
+
+
+
+
+def _clean_excel_string(s: str) -> str:
+    if s is None:
+        return s
+
+    if not isinstance(s, str):
+        try:
+
+            if isinstance(s, (list, dict)):
+                s = json.dumps(s, ensure_ascii=False)
+            else:
+                s = str(s)
+        except Exception:
+            s = str(s)
+
+    return _ILLEGAL_EXCEL_CHARS_RE.sub("", s)
+
+def clean_dataframe_for_excel(df: pd.DataFrame) -> pd.DataFrame:
+   
+    if df is None or df.empty:
+        return df
+
+    df_clean = df.copy()
+
+    obj_cols = df_clean.select_dtypes(include=["object", "string"]).columns
+    for col in obj_cols:
+        df_clean[col] = df_clean[col].map(
+            lambda v: _clean_excel_string(v) if pd.notna(v) else v
+        )
+
+    return df_clean
+
+
 
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
@@ -857,6 +1046,11 @@ def process_and_stage_fact_workphases(combined_manufacturing_path: Path):
         "single_item_time_actual_min": (combined_manufacturing["ActualFinishDate"] - combined_manufacturing["ActualStartDate"]).dt.total_seconds() / 60,
         "has_related_events": pd.NA
     })
+    
+    """excel_path = append_df_to_excel(
+        fact_workphases,"fact_workphases"
+    )"""
+
     engine = get_engine()
 
     try:
@@ -903,8 +1097,8 @@ def process_and_stage_fact_machine_events(combined_manufacturing_reporting_path:
         "end_time": get_date_key(combined_reportings["ActualReportedDate"]),
         "start_at": pd.NA,
         "end_at": pd.NA,
-        "duration_min": pd.NA,
-        "single_item_time_min": unit_time_min + setup_time_min,
+        "duration_min": pd.NA, #Lopetus - aloitusaika
+        "single_item_time_min": unit_time_min + setup_time_min, #Kuinka kauan kone on tehnyt, saadaan ehkä paremmin konedatasta
         "produced_qty": combined_reportings["Quantity"],
         "effective_production_min": pd.NA,
         "effective_production_pct": pd.NA,
@@ -919,6 +1113,10 @@ def process_and_stage_fact_machine_events(combined_manufacturing_reporting_path:
         "notes": pd.NA,
     })
     engine = get_engine()
+    
+    """excel_path = append_df_to_excel(
+        fact_machine_events,"fact_machine_events"
+    )"""
 
     try:
         with engine.begin() as conn:
@@ -1032,7 +1230,18 @@ def process_dim():
     order_type_int_columns = ["order_type_id"]
     order_types_to_keep = [ "order_type_id","order_type_name"]
     order_types = shape_and_types(order_types,rename_order_types,order_types_to_keep,order_type_int_columns)
-
+    """append_df_to_excel(
+        work_centers,"work_centers"
+    )
+    append_df_to_excel(
+        parts,"parts"
+    )
+    append_df_to_excel(
+        customers,"dim_customer"
+    )
+    append_df_to_excel(
+        order_types,"dim_order_type"
+    )"""
     try:
         with engine.begin() as conn:
             save_df(work_centers,"dim_machine",conn)
@@ -1085,6 +1294,10 @@ def fetch_manufacturing_task():
 def fetch_sales_task():
     fetch_sales()
 
+@task()
+def fetch_purchases_task():
+    fetch_purchases()
+
 @dag(
     dag_id="erp_file_processor",
     default_args=default_args,
@@ -1101,21 +1314,26 @@ def erp_file_processor():
     t_inventory = fetch_inventory_task()
     t_manufacturing = fetch_manufacturing_task()
     t_sales = fetch_sales_task()
+    t_purchases = fetch_purchases_task()
     
     manufacturing_files = get_latest_endpoint_files_task("manufacturing")
     common_files = get_latest_endpoint_files_task("common")
     inventory_files = get_latest_endpoint_files_task("inventory")
     sales_files = get_latest_endpoint_files_task("sales")
+    purchase_files = get_latest_endpoint_files_task("purchase")
 
     process_manufacturing = process_erp_files_task(manufacturing_files)
     process_common = process_erp_files_task(common_files)
     process_inventory = process_erp_files_task(inventory_files)
     process_sales = process_erp_files_task(sales_files)
+    process_purchases = process_erp_files_task(purchase_files)
+    
 
     combined_orders = combine_manufacturing_data_task(str(LOCAL_STAGED_PATH / "manufacturing"),combine_manufacturing_tables)
     combined_sales = combine_sales_data_task(str(LOCAL_STAGED_PATH / "sales"), combine_sales_tables)
     combined_inventory = combine_inventory_data_task(str(LOCAL_STAGED_PATH / "inventory"), combine_inventory_tables)
     combined_reportings = combine_manufacturing_reportings_task(str(LOCAL_STAGED_PATH / "manufacturing"),combine_reporting_tables)
+    combined_purchases = combine_purchase_data_task(str(LOCAL_STAGED_PATH / "purchase"), combine_purchase_tables)
 
     processed_orders = process_and_stage_fact_order_rows_task(combined_sales)
     processed_workphases = process_and_stage_fact_workphases_task(combined_orders)
@@ -1125,7 +1343,7 @@ def erp_file_processor():
     processed_machine_events = process_and_stage_fact_machine_events_task(combined_reportings)
 
     
-    authenticate >> t_common >> t_inventory >> t_manufacturing >> t_sales
+    authenticate >> t_common >> t_inventory >> t_manufacturing >> t_sales >> t_purchases
 
     t_manufacturing >> manufacturing_files >> process_manufacturing >> combined_orders >> combined_reportings
 
@@ -1134,6 +1352,8 @@ def erp_file_processor():
     t_inventory >> inventory_files >> process_inventory >> combined_inventory
 
     t_sales >> sales_files >> process_sales >> combined_sales
+
+    t_purchases >> purchase_files >> process_purchases >> combined_purchases
 
     combined_sales >> processed_orders
     combined_orders >> processed_workphases 
@@ -1173,7 +1393,7 @@ def erp_file_processor_test():
     process_and_stage_fact_order_rows(Path(combined_sales))
     process_and_stage_fact_workphases(Path(combined_orders))
     process_and_stage_fact_machine_events(Path(combined_reportings))
-    #process_dim()
-"""
+    processed_dim = process_dim()"""
+
     
 dag_instance = erp_file_processor()

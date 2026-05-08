@@ -13,7 +13,8 @@ def fetch_inventory():
         }
     endpoints = [
         "/Parts",
-        "/PartCodes"
+        "/PartCodes",
+        "/StockTransactions"
     ]
     query = "?$orderby=Id desc"
 
