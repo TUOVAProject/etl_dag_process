@@ -44,6 +44,7 @@ ERP_SALES_SOURCE_TYPES= [
     "erp_sales_customers",
     "erp_sales_invoiceLogs",
     "erp_sales_orderQuantityCustomerOrders",
+    "erp_sales_customerOrderInvoiceRows",
     "erp_sales_salesPrices",
 ]
 
@@ -62,7 +63,7 @@ ERP_SOURCE_CONFIG = {
         "Currencies" : ["Id","Code","Description"],
         "ExtraFieldGroups" : ["Id","Name","RowNumber"],
         "ExtraFieldOptionTemplates" : ["Id","Code","Description","ExtraFieldTemplateId"],
-        "ExtraFields" : ["Id","ParentId","SelectedOptionId","SelectedOptionIds"],
+        "ExtraFields" : ["Id","ParentId","ParentClass","SelectedOptionId","SelectedOptionIds"],
         "ExtraFieldTemplates" : ["Id","Name","ParentId","RowNumber"],
         "ReasonCodes" : ["Id","Description","Code"],
         "Units" : ["Id","Code","Description","Number"],
@@ -71,14 +72,14 @@ ERP_SOURCE_CONFIG = {
 
     "inventory": {
         "PartCodes" : ["Id","Alias","Code","Description"],
-        "Parts" : ["Id","PartNumber","Description","ActiveRevisionId","Alias","AveragePrice","CompanyId","PartCodeId","PreparationId","StandardPrice","ExtraDescription"],
+        "Parts" : ["Id","PartNumber","Description","ActiveRevisionId","Alias","AveragePrice","CompanyId","PartCodeId","PreparationId","StandardPrice","ExtraDescription","Type"],
         "StockTransactions" : ["Id","PartNumber","PartId","BalanceChange","BalanceOnPartAfterChange","LoggingTimeStamp","DeliveryDate","WarehouseId","OrderNumber","StandardPrice","Price","ReportedPrice","Amount"]
     },
 
     "manufacturing" : {
         "Drawings" : ["Id","DrawingNumber","PartId"],
         "ManualOperationStatuses" : ["Id","Code","Description"],
-        "ManufacturingOrderMaterials" : ["Id","PartId"],
+        "ManufacturingOrderMaterials" : ["Id","PartId","ReportedQuantity","ManufacturingOrderId"],
         "ManufacturingOrderNodeDrawings" : [],
         "ManufacturingOrderNodes" : ["Id","PartId","ReportedQuantity","PlannedQuantity","RestQuantity","StartDate","EndDate","WarehouseId","ManufacturingOrderNodeId"],
         "ManufacturingOrderOperationControlDataRows" : [],
@@ -106,11 +107,15 @@ ERP_SOURCE_CONFIG = {
     
     "sales" : {
         "CustomerOrderRows" : ["Id","PartId","DeliveredQuantity","DeliveryDate","DesiredDeliveryDate","LinkedManufacturingOrderId","InitialDeliveryDate","OrderDate","OrderedQuantity","OrderRowType",
-                                     "ParentOrderId","ParentRowId","Price","PriceInCompanyCurrency","RevisionId","NewFinishDate","UnitId"],
+                                     "ParentOrderId","ParentRowId","Price","StandardPrice","PriceInCompanyCurrency","RevisionId","NewFinishDate","UnitId"],
         "CustomerOrders" : ["Id","CustomerId","InvoiceCustomerId","OrderDate","OrderNumber","OrderTypeId","Status","SellerId"],
         "CustomerOrderTypes" : ["Id","Description","IncludeInStatistics"],
         "Customers" : ["Id","Name","Code","AlternativeName"],
-        "InvoiceLogs" : ["Id","InvoiceId","InvoiceDate","PartId","PartNumber","PartCode","CustomerId","CustomerOrderId","OrderedQuantity","InvoicedQuantity","UnitCode","Price","PriceInCompanyCurrency","StandardPrice"],
+        "InvoiceLogs" : ["Id","InvoiceId","InvoiceDate","PartId","PartNumber","PartCode","CustomerId","CustomerCode","CustomerOrderId","OrderedQuantity",
+        "InvoicedQuantity","UnitCode","Price","PriceInCompanyCurrency","StandardPrice",
+        "SetupPrice","Discount","ExchangeRate","OrderRowType","ConversionFactor","FifoPrice","DeliveryRowId"],
+        "CustomerOrderInvoiceRows" : ["Id","OverrideStandardPrice","StandardPrice"],
+        "CustomerOrderDeliveryRows" : ["Id","InvoiceRowId","CustomerOrderRowId"],
         "OrderQuantityCustomerOrders" : [],
         "SalesPrices" : [],
     },
@@ -161,8 +166,12 @@ combine_manufacturing_tables = {
     "ReportedUnitTime","PlannedUnitTime","ReportedSetupTime","PlannedSetupTime",
     "ManufacturingOrderId","OperationNumber","OperationRowId","PlannedStartDate","ActualStartDate",
     "PlannedFinishDate","ActualFinishDate","WorkshopOperationStatus","Description"],
-    "OperationRows" : ["Id","OrderOperation","UnitTime"]
-
+    "OperationRows" : ["Id","OrderOperation","UnitTime"],
+    ""
+    "ExtraFieldGroups" : ["Id","Name","RowNumber"],
+    "ExtraFieldOptionTemplates" : ["Id","Code","Description","ExtraFieldTemplateId"],
+    "ExtraFields" : ["Id","ParentId","ParentClass","SelectedOptionId","SelectedOptionIds"],
+    "ExtraFieldTemplates" : ["Id","Name","ParentId","RowNumber"],
 }
 
 combine_reporting_tables = {
@@ -194,6 +203,41 @@ combine_purchase_tables = {
             ],
 }
 
+combine_material_tables = {
+    "InvoiceLogs": [
+        "Id","PartId","CustomerCode",
+        "InvoicedQuantity","Price","SetupPrice","Discount","ExchangeRate",
+        "OrderRowType","ConversionFactor","DeliveryRowId",
+        "StandardPrice","FifoPrice","InvoiceDate"
+    ],
+    "Parts": [
+        "Id","PartNumber","Description","StandardPrice","Type"
+    ],
+    "Customers": [
+        "Id","Code","Name"
+    ],
+    "ExtraFieldGroups" : [
+        "Id","Name","RowNumber"
+    ],
+    "ExtraFieldOptionTemplates" : [
+        "Id","Code","Description","ExtraFieldTemplateId"
+    ],
+    "ExtraFields" : [
+        "Id","ParentId","ParentClass","SelectedOptionId","SelectedOptionIds"
+    ],
+    "ExtraFieldTemplates" : [
+        "Id","Name","ParentId","RowNumber"
+    ],
+    "CustomerOrderInvoiceRows" : [
+        "Id","OverrideStandardPrice","StandardPrice"
+    ],
+    "CustomerOrderDeliveryRows" : [
+        "Id","InvoiceRowId","CustomerOrderRowId"
+    ],
+    "CustomerOrderRows" : [
+        "Id","Price","StandardPrice"
+    ],
+}
 
 #Datamodel
 

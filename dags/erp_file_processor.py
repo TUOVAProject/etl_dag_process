@@ -654,21 +654,36 @@ def combine_inventory_data(staged_path: Path, mapping: dict):
     return saved_parquet
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
-def combine_manufacturing_data_task(staged_path: str, mapping: dict):
-    return combine_manufacturing_data(Path(staged_path),mapping)
+def combine_manufacturing_data_task(staged_manufacturing_path: str,staged_commmon_path : str, mapping: dict):
+    return combine_manufacturing_data(Path(staged_manufacturing_path),Path(staged_commmon_path), mapping)
 
-def combine_manufacturing_data(staged_path: Path, mapping: dict):
+def combine_manufacturing_data(staged_manufacturing_path: Path, staged_commmon_path : Path,mapping: dict):
 
     date_mo, manufacturing_orders = load_latest(
-        staged_path, "ManufacturingOrders",LoadMode.STAGED, mapping["ManufacturingOrders"]
+        staged_manufacturing_path, "ManufacturingOrders",LoadMode.STAGED, mapping["ManufacturingOrders"]
     )
     date_ops, orderOperations = load_latest(
-        staged_path, "ManufacturingOrderOperations",LoadMode.STAGED, mapping["ManufacturingOrderOperations"]
+        staged_manufacturing_path, "ManufacturingOrderOperations",LoadMode.STAGED, mapping["ManufacturingOrderOperations"]
     )
     date_rows, operationRows = load_latest(
-        staged_path, "OperationRows",LoadMode.STAGED, mapping["OperationRows"]
+        staged_manufacturing_path, "OperationRows",LoadMode.STAGED, mapping["OperationRows"]
     )
 
+    ef_rows,extraFields = load_latest(
+        staged_commmon_path, "ExtraFields",LoadMode.STAGED, mapping["ExtraFields"]
+    )
+
+    efg_rows,extraFieldGroups = load_latest(
+        staged_commmon_path, "ExtraFieldGroups",LoadMode.STAGED, mapping["ExtraFieldGroups"]
+    )
+
+    efot_rows,extraFieldOptionTemplates = load_latest(
+        staged_commmon_path, "ExtraFieldOptionTemplates",LoadMode.STAGED, mapping["ExtraFieldOptionTemplates"]
+    )
+
+    eft_rows,extraFieldTemplates = load_latest(
+        staged_commmon_path, "ExtraFieldTemplates",LoadMode.STAGED, mapping["ExtraFieldTemplates"]
+    )
 
     manufacturing_orders = manufacturing_orders.rename(columns={
         "Id": "ManufacturingOrderId"
@@ -685,19 +700,37 @@ def combine_manufacturing_data(staged_path: Path, mapping: dict):
         "Id": "OperationRowId"
     })
 
-    merged = orderOperations.merge(
-        manufacturing_orders,
-        left_on="ManufacturingOrderId",
-        right_on="ManufacturingOrderId",
-        how="left"
-    )
+    
+    part_extrafields = resolve_part_extrafields_by_group_name(
+            extraFieldGroups=extraFieldGroups,
+            extraFieldTemplates=extraFieldTemplates,
+            extraFieldOptionTemplates=extraFieldOptionTemplates,
+            extraFields=extraFields,
+            group_name="lisätiedot"
+        )
 
-    merged = merged.merge(
-        operationRows,
-        left_on="OperationRowId",
-        right_on="OperationRowId",
-        how="left"
-    )
+    
+    manufacturing_orders = manufacturing_orders.merge(
+            part_extrafields,
+            on="PartId",
+            how="left"
+        )
+
+    
+    merged = (
+            orderOperations
+            .merge(
+                manufacturing_orders,
+                on="ManufacturingOrderId",
+                how="left"
+            )
+            .merge(
+                operationRows,
+                on="OperationRowId",
+                how="left"
+            )
+        )
+
 
     date_str = datetime.now().strftime("%Y-%m-%d")
 
@@ -705,6 +738,90 @@ def combine_manufacturing_data(staged_path: Path, mapping: dict):
     saved_parquet =  save_combined_parquet(merged,date_str,LOCAL_COMBINED_PATH / endpoint,endpoint)
     clean_parquet_history(endpoint, LOCAL_COMBINED_PATH / endpoint, days_to_keep=2)
     return saved_parquet
+
+
+def resolve_part_extrafields_by_group_name(
+    extraFieldGroups: pd.DataFrame,
+    extraFieldTemplates: pd.DataFrame,
+    extraFieldOptionTemplates: pd.DataFrame,
+    extraFields: pd.DataFrame,
+    group_name: str
+) -> pd.DataFrame:
+    """
+    Palauttaa DataFrame:n, jossa:
+      - PartId
+      - ExtraFieldTemplateId
+      - ExtraFieldOptionTemplateId
+      - (optionaalisesti option nimi)
+
+    ParentId tulkitaan PartId:ksi metadataketjun perusteella.
+    """
+
+    #ExtraFieldGroup
+    groups = extraFieldGroups[
+        extraFieldGroups["Name"].str.lower() == group_name.lower()
+    ]
+    if groups.empty:
+        raise ValueError(f"ExtraFieldGroup '{group_name}' ei löytynyt")
+
+    group_ids = groups["Id"]
+
+    #ExtraFieldTemplates ryhmän alta
+    templates = extraFieldTemplates[
+        extraFieldTemplates["ParentId"].isin(group_ids)
+    ]
+    if templates.empty:
+        raise ValueError(f"ExtraFieldTemplates puuttuu ryhmälle '{group_name}'")
+
+
+    #OptionTemplatet
+    options = extraFieldOptionTemplates[
+        extraFieldOptionTemplates["ExtraFieldTemplateId"].isin(templates["Id"])
+    ]
+    if options.empty:
+        raise ValueError(f"ExtraFieldOptionTemplates puuttuu ryhmälle '{group_name}'")
+
+    #ExtraFields SelectedOptionId:n kautta
+    fields = extraFields[
+        extraFields["SelectedOptionId"].isin(options["Id"])
+    ].copy()
+
+    if fields.empty:
+        return pd.DataFrame(
+            columns=[
+                "PartId",
+                "ExtraFieldTemplateId",
+                "ExtraFieldOptionTemplateId"
+            ]
+        )
+
+    #varmistetaan että ryhmä kohdistuu yhteen rekisteriin
+    parent_classes = fields["ParentClass"].unique()
+    if len(parent_classes) != 1:
+        raise ValueError(
+            f"Ryhmä '{group_name}' kohdistuu useaan ParentClassiin: {parent_classes}"
+        )
+    
+    fields = fields.rename(columns={
+        "ParentId": "PartId",
+        "SelectedOptionId": "ExtraFieldOptionTemplateId"
+    })
+
+    fields = fields.merge(
+        options[["Id", "ExtraFieldTemplateId", "Description"]],
+        left_on="ExtraFieldOptionTemplateId",
+        right_on="Id",
+        how="left",
+        suffixes=("", "_Option")
+    )
+
+    return fields[[
+        "PartId",
+        "ExtraFieldTemplateId",
+        "ExtraFieldOptionTemplateId",
+        "Name"
+    ]]
+
 
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
 def combine_purchase_data_task(staged_path: str, mapping: dict):
@@ -788,6 +905,8 @@ def combine_manufacturing_reportings(staged_path: Path, mapping: dict):
         LoadMode.STAGED,
         mapping["ManufacturingOrderOperationReportings"]
     )
+
+    
 
     manufacturing_orders = manufacturing_orders.rename(columns={
         "Id": "ManufacturingOrderId"
@@ -1329,7 +1448,7 @@ def erp_file_processor():
     process_purchases = process_erp_files_task(purchase_files)
     
 
-    combined_orders = combine_manufacturing_data_task(str(LOCAL_STAGED_PATH / "manufacturing"),combine_manufacturing_tables)
+    combined_orders = combine_manufacturing_data_task(str(LOCAL_STAGED_PATH / "manufacturing"),str(LOCAL_STAGED_PATH / "common"),combine_manufacturing_tables)
     combined_sales = combine_sales_data_task(str(LOCAL_STAGED_PATH / "sales"), combine_sales_tables)
     combined_inventory = combine_inventory_data_task(str(LOCAL_STAGED_PATH / "inventory"), combine_inventory_tables)
     combined_reportings = combine_manufacturing_reportings_task(str(LOCAL_STAGED_PATH / "manufacturing"),combine_reporting_tables)
@@ -1343,24 +1462,24 @@ def erp_file_processor():
     processed_machine_events = process_and_stage_fact_machine_events_task(combined_reportings)
 
     
-    authenticate >> t_common >> t_inventory >> t_manufacturing >> t_sales >> t_purchases
+    authenticate >> t_common >> t_inventory >> t_manufacturing >> t_sales >> t_purchases # type: ignore
 
-    t_manufacturing >> manufacturing_files >> process_manufacturing >> combined_orders >> combined_reportings
+    t_manufacturing >> manufacturing_files >> process_manufacturing >> combined_orders >> combined_reportings # type: ignore
 
-    t_common >> common_files >> process_common
+    t_common >> common_files >> process_common # type: ignore
 
-    t_inventory >> inventory_files >> process_inventory >> combined_inventory
+    t_inventory >> inventory_files >> process_inventory >> combined_inventory # type: ignore
 
-    t_sales >> sales_files >> process_sales >> combined_sales
+    t_sales >> sales_files >> process_sales >> combined_sales # type: ignore
 
-    t_purchases >> purchase_files >> process_purchases >> combined_purchases
+    t_purchases >> purchase_files >> process_purchases >> combined_purchases # type: ignore
 
-    combined_sales >> processed_orders
-    combined_orders >> processed_workphases 
+    combined_sales >> processed_orders # type: ignore
+    combined_orders >> processed_workphases # type: ignore
 
-    [processed_orders, processed_workphases] >> processed_dim
+    [processed_orders, processed_workphases] >> processed_dim # type: ignore
 
-    processed_dim >> processed_machine_events
+    processed_dim >> processed_machine_events # type: ignore
 
 """
 #Test for debugging the airflow behaviour without aiflow

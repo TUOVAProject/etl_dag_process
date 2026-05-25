@@ -18,7 +18,9 @@ def fetch_sales():
         "/OrderQuantityCustomerOrders",
         "/CustomerOrderTypes",   
         "/SalesPrices", 
-        "/InvoiceLogs"
+        "/InvoiceLogs",
+        "/CustomerOrderDeliveryRows",
+        "/CustomerOrderInvoiceRows",
     ]
     query = "?$orderby=Id desc"
 
