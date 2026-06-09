@@ -22,7 +22,7 @@ COMBINED_DIRS = [
     "results/combined/sales",
     #"results/combined/purchase",
     "results/combined/materials",
-    "results/combined/materials_raw"
+    "results/combined/materials_raw",
 ]
 
 RECURSIVE_WITHIN_DATE_FOLDER = False
@@ -210,7 +210,7 @@ def dataset_to_excel():
                     save_df.to_excel(writer, sheet_name=sheet_name, index=False)
                     sheets_written += 1
 
-            print(f"Saved Excel file: {output_path} (sheets: {sheets_written})")
+            print(f"Saving Excel file: {output_path} (sheets: {sheets_written})")
 
 
 def combined_dataset_to_excel():
@@ -250,7 +250,7 @@ def combined_dataset_to_excel():
                 save_df.to_excel(writer, sheet_name=sheet_name, index=False)
                 sheets_written += 1
 
-        print(f"Saved Excel file: {output_path} (sheets: {sheets_written})")
+        print(f"Saving Excel file: {output_path} (sheets: {sheets_written})")
 
 
 def safe_filename(name: str, max_len: int = 128) -> str:

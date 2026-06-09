@@ -84,7 +84,8 @@ ERP_SOURCE_CONFIG = {
         "ManufacturingOrderNodes" : ["Id","PartId","ReportedQuantity","PlannedQuantity","RestQuantity","StartDate","EndDate","WarehouseId","ManufacturingOrderNodeId"],
         "ManufacturingOrderOperationControlDataRows" : [],
         "ManufacturingOrderOperationReportings" : ["Id","OperationId","Quantity","SetupTime","UnitTime","WorkCenterId","WarehouseId","EmployeeId","ActualReportedDate",
-                                                        "PreviousRestQuantity","RestQuantity","MainPartId","UnitCost","Type","SetupCost","ReportingTimeStamp","CommentId"],
+                                                        "PreviousRestQuantity","RestQuantity","MainPartId","UnitCost","Type","SetupCost","ReportingTimeStamp","CommentId",
+                                                        "SetupCostFactor1","SetupCostFactor2","SetupCostFactor3","UnitCostFactor1","UnitCostFactor2","UnitCostFactor3"],
         "ManufacturingOrderOperations" : ["Id","Priority","WorkCenterId","PartId","PlannedQuantity","ReportedQuantity",
                                                 "RestQuantity","ReportedUnitTime",
                                                 "ReportedSetupTime","RejectedQuantity","ManufacturingOrderId","OperationNumber","PlannedSetupTime","PlannedUnitTime",
@@ -95,7 +96,7 @@ ERP_SOURCE_CONFIG = {
         "ManufacturingOrderTypes" : ["Id","Description"],
         "MaterialRows" : ["Id","PartId","Quantity","SetupQuantity"],
         "OperationRowControlDataRows" : [],
-        "OperationRows" : ["Id","OperationNumber","Description","WorkCenterId","IsSubContractor","SetupTime","UnitTime","QueueTime","UnitCost"],
+        "OperationRows" : ["Id","OperationNumber","Description","WorkCenterId","IsSubcontractor","SetupTime","UnitTime","QueueTime","UnitCost","SetupCost"],
         "OrderQuantityManufacturingOrderOperations" : [],
         "OrderQuantityManufacturingOrders" : [],
         "Preparations" : ["Id","PartNumber","Description"],
@@ -112,7 +113,7 @@ ERP_SOURCE_CONFIG = {
         "CustomerOrderTypes" : ["Id","Description","IncludeInStatistics"],
         "Customers" : ["Id","Name","Code","AlternativeName"],
         "InvoiceLogs" : ["Id","InvoiceId","InvoiceDate","PartId","PartNumber","PartCode","CustomerId","CustomerCode","CustomerOrderId","OrderedQuantity",
-        "InvoicedQuantity","UnitCode","Price","PriceInCompanyCurrency","StandardPrice",
+        "InvoicedQuantity","LoggingTimestamp","UnitCode","Price","PriceInCompanyCurrency","StandardPrice",
         "SetupPrice","Discount","ExchangeRate","OrderRowType","ConversionFactor","FifoPrice","DeliveryRowId"],
         "CustomerOrderInvoiceRows" : ["Id","OverrideStandardPrice","StandardPrice"],
         "CustomerOrderDeliveryRows" : ["Id","InvoiceRowId","CustomerOrderRowId"],
@@ -157,32 +158,48 @@ combine_sales_tables = {
                                      "ParentOrderId","ParentRowId","Price","PriceInCompanyCurrency","RevisionId","NewFinishDate","UnitId"],
     "CustomerOrders" : ["Id","CustomerId","InvoiceCustomerId","OrderDate","OrderNumber","OrderTypeId","Status","SellerId"],
     "Customers" : ["Id","Name","Code","AlternativeName"],
+    "InvoiceLogs" : ["Id","CustomerOrderId","InvoicedQuantity","Price","LoggingTimestamp"],
+    "ManufacturingOrders" : ["Id","StartDate","InitialFinishDate","FinishDate","CustomerOrderId"]
 }
 
 combine_manufacturing_tables = {
     "ManufacturingOrders" : ["Id","OrderNumber","OrderTypeId","CustomerOrderId","CustomerId","InitialFinishDate","Status","PartId","ReportedQuantity","PlannedQuantity",],
     "ManufacturingOrderOperations" : ["Id","WorkCenterId","PartId",
-    "PlannedQuantity","ReportedQuantity","RejectedQuantity","RestQuantity",
-    "ReportedUnitTime","PlannedUnitTime","ReportedSetupTime","PlannedSetupTime",
-    "ManufacturingOrderId","OperationNumber","OperationRowId","PlannedStartDate","ActualStartDate",
-    "PlannedFinishDate","ActualFinishDate","WorkshopOperationStatus","Description"],
-    "OperationRows" : ["Id","OrderOperation","UnitTime"],
-    ""
+        "PlannedQuantity","ReportedQuantity","RejectedQuantity","RestQuantity",
+        "ReportedUnitTime","PlannedUnitTime","ReportedSetupTime","PlannedSetupTime",
+        "ManufacturingOrderId","OperationNumber","OperationRowId","PlannedStartDate","ActualStartDate",
+        "PlannedFinishDate","ActualFinishDate","WorkshopOperationStatus","Description"],
+    "OperationRows" : ["Id","OrderOperation","UnitTime","IsSubcontractor","UnitCost","SetupCost"],
     "ExtraFieldGroups" : ["Id","Name","RowNumber"],
     "ExtraFieldOptionTemplates" : ["Id","Code","Description","ExtraFieldTemplateId"],
     "ExtraFields" : ["Id","ParentId","ParentClass","SelectedOptionId","SelectedOptionIds"],
     "ExtraFieldTemplates" : ["Id","Name","ParentId","RowNumber"],
+    "WorkCenters" : ["Id","Number"],
 }
 
 combine_reporting_tables = {
     "ManufacturingOrders" : ["Id","OrderNumber","OrderTypeId","CustomerOrderId","CustomerId","InitialFinishDate","Status","PartId",],
     "ManufacturingOrderOperationReportings" : ["Id","OperationId","Quantity","SetupTime","UnitTime","WarehouseId","EmployeeId","ActualReportedDate",
-                                                        "PreviousRestQuantity","RestQuantity","MainPartId","UnitCost","SetupCost","Type","ReportingTimeStamp","CommentId"],
+        "PreviousRestQuantity","RestQuantity","MainPartId","UnitCost","SetupCost","Type","ReportingTimeStamp","CommentId","SetupCostFactor1",
+        "SetupCostFactor2","SetupCostFactor3","UnitCostFactor1","UnitCostFactor2","UnitCostFactor3"],
     "ManufacturingOrderOperations" : ["Id","WorkCenterId",
     "PlannedQuantity","ReportedQuantity","RejectedQuantity",
     "ReportedUnitTime","PlannedUnitTime","ReportedSetupTime","PlannedSetupTime",
     "ManufacturingOrderId","OperationNumber","OperationRowId","PlannedStartDate","ActualStartDate",
     "PlannedFinishDate","ActualFinishDate","WorkshopOperationStatus","Description"],
+    "ExtraFieldGroups" : [
+        "Id","Name","RowNumber"
+    ],
+    "ExtraFieldOptionTemplates" : [
+        "Id","Code","Description","ExtraFieldTemplateId"
+    ],
+    "ExtraFields" : [
+        "Id","ParentId","ParentClass","SelectedOptionId","SelectedOptionIds"
+    ],
+    "ExtraFieldTemplates" : [
+        "Id","Name","ParentId","RowNumber"
+    ],
+    "Customers" : ["Id","Code"],
 }
 
 combine_inventory_tables = {
