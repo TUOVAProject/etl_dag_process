@@ -247,6 +247,7 @@ def combined_dataset_to_excel():
                     df = pd.DataFrame()
 
                 save_df = clean_dataframe_for_excel(df)
+                print(sheet_name)
                 save_df.to_excel(writer, sheet_name=sheet_name, index=False)
                 sheets_written += 1
 

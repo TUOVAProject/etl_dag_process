@@ -21,7 +21,7 @@ def main():
     #erp_file_processor()
     get_custom_logger()
     erp_file_processor_test()
-    #dataset_to_excel()
+    dataset_to_excel()
     #export_endpoint_to_csv()
     #combined_export_endpoint_to_csv()
     combined_dataset_to_excel()

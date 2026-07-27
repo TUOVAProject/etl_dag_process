@@ -84,7 +84,7 @@ ERP_SOURCE_CONFIG = {
         "ManufacturingOrderNodes" : ["Id","PartId","ReportedQuantity","PlannedQuantity","RestQuantity","StartDate","EndDate","WarehouseId","ManufacturingOrderNodeId"],
         "ManufacturingOrderOperationControlDataRows" : [],
         "ManufacturingOrderOperationReportings" : ["Id","OperationId","Quantity","SetupTime","UnitTime","WorkCenterId","WarehouseId","EmployeeId","ActualReportedDate",
-                                                        "PreviousRestQuantity","RestQuantity","MainPartId","UnitCost","Type","SetupCost","ReportingTimeStamp","CommentId",
+                                                        "PreviousRestQuantity","RestQuantity","MainPartId","UnitCost","Type","SetupCost","ReportingTimestamp","CommentId",
                                                         "SetupCostFactor1","SetupCostFactor2","SetupCostFactor3","UnitCostFactor1","UnitCostFactor2","UnitCostFactor3"],
         "ManufacturingOrderOperations" : ["Id","Priority","WorkCenterId","PartId","PlannedQuantity","ReportedQuantity",
                                                 "RestQuantity","ReportedUnitTime",
@@ -159,7 +159,8 @@ combine_sales_tables = {
     "CustomerOrders" : ["Id","CustomerId","InvoiceCustomerId","OrderDate","OrderNumber","OrderTypeId","Status","SellerId"],
     "Customers" : ["Id","Name","Code","AlternativeName"],
     "InvoiceLogs" : ["Id","CustomerOrderId","InvoicedQuantity","Price","LoggingTimestamp"],
-    "ManufacturingOrders" : ["Id","StartDate","InitialFinishDate","FinishDate","CustomerOrderId"]
+    "ManufacturingOrders" : ["Id","StartDate","InitialFinishDate","FinishDate","CustomerOrderId"],
+    "ManufacturingOrderOperations" : ["Id","ManufacturingOrderId","ActualStartDate","ActualFinishDate"],
 }
 
 combine_manufacturing_tables = {
@@ -180,7 +181,7 @@ combine_manufacturing_tables = {
 combine_reporting_tables = {
     "ManufacturingOrders" : ["Id","OrderNumber","OrderTypeId","CustomerOrderId","CustomerId","InitialFinishDate","Status","PartId",],
     "ManufacturingOrderOperationReportings" : ["Id","OperationId","Quantity","SetupTime","UnitTime","WarehouseId","EmployeeId","ActualReportedDate",
-        "PreviousRestQuantity","RestQuantity","MainPartId","UnitCost","SetupCost","Type","ReportingTimeStamp","CommentId","SetupCostFactor1",
+        "PreviousRestQuantity","RestQuantity","MainPartId","UnitCost","SetupCost","Type","ReportingTimestamp","CommentId","SetupCostFactor1",
         "SetupCostFactor2","SetupCostFactor3","UnitCostFactor1","UnitCostFactor2","UnitCostFactor3"],
     "ManufacturingOrderOperations" : ["Id","WorkCenterId",
     "PlannedQuantity","ReportedQuantity","RejectedQuantity",
