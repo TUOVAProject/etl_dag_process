@@ -402,7 +402,7 @@ def process_erp_files(file_path: Path):
         )
 
     df = df[[c for c in columns if c in df.columns]]
-    logger.info("Saving parquet : ", LOCAL_STAGED_PATH / source_type)
+    logger.info("Saving parquet: %s", LOCAL_STAGED_PATH / source_type)
     saved_parquet = save_clean_parquet(endpoint, df, LOCAL_STAGED_PATH / source_type)
     clean_parquet_history(endpoint, LOCAL_STAGED_PATH / source_type, days_to_keep=2)
     return saved_parquet
@@ -522,17 +522,53 @@ def save_combined_parquet(df: pd.DataFrame, date_str: str, outdir: Path, endpoin
     file_name = f"Combined{endpoint.capitalize()}.parquet"
     output_file = outdir / f"{date_str}-{file_name}"
     df.to_parquet(output_file,index=False)
-    logger.info("Saved combined:", output_file)
+    logger.info("Saved combined: %s", output_file)
     return str(output_file)
 
 
 #For error handling in debugging, might delete later
 def check_duplicates(df: pd.DataFrame):
     dups = df.columns[df.columns.duplicated(keep=False)]
-    logger.info("Duplikaattikolumnit:", list(dups))
+    logger.info("Duplikaattikolumnit: %s", list(dups))
 
 
+def fill_value_from_parent_row(
+    df: pd.DataFrame,
+    id_col: str = "OrderRowId",
+    parent_col: str = "ParentRowId",
+    value_col: str = "PartId",
+    max_iterations: int = 5
+) -> pd.DataFrame:
+    """
+    Täyttää puuttuvat PartId-arvot hakemalla ne emo-riviltä ParentOrderRowId:n
+    kautta (esim. kokoonpanon alarivit, jotka eivät kanna omaa PartId:tä).
 
+    Iteroi useamman kierroksen, jos ketju on moniportainen (rivi -> emorivi ->
+    isoisorivi jne.), ja pysähtyy kun mitään uutta ei enää saada täytettyä.
+    """
+    if id_col not in df.columns or parent_col not in df.columns or value_col not in df.columns:
+        logger.info(
+            "fill_partid_from_parent_row: sarake puuttuu (%s/%s/%s), fallback ohitetaan",
+            id_col, parent_col, value_col
+        )
+        return df
+
+    df = df.copy()
+
+    for _ in range(max_iterations):
+        missing_mask = df[value_col].isna() & df[parent_col].notna()
+        if not missing_mask.any():
+            break
+
+        lookup = df.set_index(id_col)[value_col]
+        filled = df.loc[missing_mask, parent_col].map(lookup)
+
+        if filled.notna().sum() == 0:
+            break
+
+        df.loc[missing_mask, value_col] = filled
+
+    return df
 
 def combine_sales_data(staged_path: Path,manufacturing_path : Path, mapping: dict):
     date_rows, rows = load_latest(staged_path, "CustomerOrderRows",LoadMode.STAGED, mapping["CustomerOrderRows"])
@@ -543,7 +579,7 @@ def combine_sales_data(staged_path: Path,manufacturing_path : Path, mapping: dic
     _, manufacturing_operations = load_latest(manufacturing_path, "ManufacturingOrderOperations",LoadMode.STAGED,mapping["ManufacturingOrderOperations"])
 
     if len({date_rows, date_orders, date_customers}) > 1:
-        logger.info("⚠ WARNING: Source dates differ!", date_rows, date_orders, date_customers)
+        logger.info("⚠ WARNING: Source dates differ! %s %s %s", date_rows, date_orders, date_customers)
 
 
     rows = rows.rename(columns={
@@ -551,6 +587,9 @@ def combine_sales_data(staged_path: Path,manufacturing_path : Path, mapping: dic
         "OrderDate": "OrderRowDate"
     })
 
+    rows = fill_value_from_parent_row(rows)
+    rows = fill_value_from_parent_row(rows, value_col="LinkedManufacturingOrderId")
+    rows = rows[rows["OrderRowType"] != 4]
     orders = orders.rename(columns={
         "Id": "OrderId"
     })
@@ -627,15 +666,9 @@ def combine_sales_data(staged_path: Path,manufacturing_path : Path, mapping: dic
         how="left"
     )
 
-    manufacturing_agg = (
-        manufacturing
-        .groupby("ManufacturingCustomerOrderId", as_index=False)
-        .agg({
-            "StartDate": "max",
-            "FinishDate": "max",
-            "InitialFinishDate": "max"
-        })
-    )
+    # Huom: manufacturing_agg lasketaan jo yllä (rivit ~590-598) täsmälleen
+    # samalla groupby/agg-logiikalla, joten toista, identtistä laskentaa
+    # ei tarvita tässä uudelleen.
 
     manufacturing_full_agg = (
         manufacturing_with_ops
@@ -832,13 +865,22 @@ def combine_sales_margin_data(
 
 
 
-    data["AdjQuantity"] = data.apply(
-        lambda r: (
-            r["InvoicedQuantity"] / r["ConversionFactor"]
-            if r.get("OrderRowType") == 1 and r.get("ConversionFactor") not in (0, None)
-            else r["InvoicedQuantity"]
-        ),
-        axis=1
+    # Vektoroitu versio aiemmasta data.apply(..., axis=1) -toteutuksesta.
+    # Sama logiikka: jaetaan ConversionFactor:lla vain jos OrderRowType == 1
+    # ja ConversionFactor on olemassa eikä ole 0, muuten käytetään sellaisenaan.
+    order_row_type = data["OrderRowType"] if "OrderRowType" in data.columns else pd.Series(np.nan, index=data.index)
+    conversion_factor = data["ConversionFactor"] if "ConversionFactor" in data.columns else pd.Series(np.nan, index=data.index)
+
+    adj_mask = (
+        (order_row_type == 1)
+        & conversion_factor.notna()
+        & (conversion_factor != 0)
+    )
+
+    data["AdjQuantity"] = np.where(
+        adj_mask,
+        data["InvoicedQuantity"] / conversion_factor,
+        data["InvoicedQuantity"]
     )
 
     data["Revenue"] = (
@@ -861,9 +903,11 @@ def combine_sales_margin_data(
 
     data["Margin"] = data["Revenue"] - data["Cost"]
 
-    data["MarginPct"] = data.apply(
-        lambda r: (r["Margin"] / r["Revenue"] * 100) if r["Revenue"] != 0 else 0,
-        axis=1
+    # Vektoroitu versio aiemmasta data.apply(..., axis=1) -toteutuksesta.
+    data["MarginPct"] = np.where(
+        data["Revenue"] != 0,
+        data["Margin"] / data["Revenue"] * 100,
+        0
     )
 
 
@@ -894,7 +938,7 @@ def combine_inventory_data(staged_path: Path, mapping: dict):
     date_parts, parts = load_latest(staged_path, "Parts",LoadMode.STAGED, mapping["Parts"])
 
     if len({date_codes, date_parts}) > 1:
-        logger.info("⚠ WARNING: Source dates differ!", date_codes, date_parts)
+        logger.info("⚠ WARNING: Source dates differ! %s %s", date_codes, date_parts)
 
     merged = parts.merge(
         part_codes,
@@ -1023,7 +1067,7 @@ def combine_manufacturing_data(staged_manufacturing_path: Path, staged_common_pa
         if col in merged.columns:
             merged[col] = (
                 merged[col]
-                .astype(str)
+                .astype("string")
                 .str.strip()
                 .str.replace(",", ".", regex=False)
             )
@@ -1230,7 +1274,7 @@ def _clean_datetime_column(df: pd.DataFrame, col: str) -> pd.DataFrame:
     return df
 
 def _clean_key_series(series: pd.Series) -> pd.Series:
-    s = series.astype(str).str.strip()
+    s = series.astype("string").str.strip()
     s = s.replace({
         "": np.nan,
         "nan": np.nan,
@@ -1341,8 +1385,8 @@ def combine_manufacturing_reportings(
 
     
     if "Code" in manufacturing_orders.columns:
-        manufacturing_orders["Code"] = manufacturing_orders["Code"].astype(str).str.strip()
-        customers["ResolvedCustomerCode"] = customers["ResolvedCustomerCode"].astype(str).str.strip()
+        manufacturing_orders["Code"] = manufacturing_orders["Code"].astype("string").str.strip()
+        customers["ResolvedCustomerCode"] = customers["ResolvedCustomerCode"].astype("string").str.strip()
 
         customers = customers.drop_duplicates(subset=["ResolvedCustomerCode"])
 
@@ -1570,17 +1614,19 @@ def process_and_stage_fact_order_rows(combined_sales_path: Path):
         #Suunniteltu tuotannon aloituspäivä, jos kyseiseen tilaukseen liittyy tuotantotilaus.
         "production_start_date_planned" : get_date_key(combined_sales["StartDate"]),
         #Tuotannon toteutunut aloituspäivä. Ensimmäisen tuotantovaiheen aikaleimasta.
-        "production_start_date_actual" : pd.NA,
+        "production_start_date_actual" : get_date_key(combined_sales["ActualStartDate"]),
         #Suunniteltu tuotannon päättymispäivä ennen tuotantoa.
         "production_end_date_planned" : get_date_key(combined_sales["InitialFinishDate"]),
         #Tuotannon toteutunut päättymispäivä. Viimeisen tuotantovaiheen aikaleimasta.
-        "production_end_date_actual" : get_date_key(combined_sales["FinishDate"]),     
+        "production_end_date_actual" : get_date_key(combined_sales["ActualFinishDate"]),     
         #Alustava toimituspäivä, joka asetettu tilauksen luonnin tai työn suunnittelun yhteydessä.   
         "delivery_date_planned":  get_date_key(combined_sales["DesiredDeliveryDate"]),
         #Toteutunut toimituspäivä.
         "delivery_date_actual":   get_date_key(combined_sales["DeliveryDate"]),
         #Laskun lähetyksen päivä laskutustiedoista.
         "invoice_date_actual" : get_date_key(combined_sales["InvoiceTimestamp"]),
+        #Laskun maksupäivä päivä laskutustiedoista.
+        "payment_date_actual" : pd.NA, #UUSI
         #Tilauksen tila. Alustavat vaihtoehdot: PLACED, PROCESSING, COMPLETE, CANCELED (CONFIRMED? PAID? DELIVERED?)
         "order_state_id": pd.to_numeric(combined_sales["Status"],errors="coerce"),
         #Tilauksen tyyppi. Mainly SALES_ORDER, but can be e.g. "OTHER" or "WARRANTY_WORK".
@@ -1593,26 +1639,44 @@ def process_and_stage_fact_order_rows(combined_sales_path: Path):
         "total_price": ordered_qty * unit_price,
         #Suunniteltu suoran työn kustannus valmistuskustannuksissa. On eri tapoja laskea. Voidaan summata eri vaiheiden konetuntihinnoista laskettuja arvoja tai jyvittämällä henkilöiden työn osuutta (jos konekustannukset yleiskustannuksissa).
         "direct_work_cost_planned" : pd.NA,
+        #Toteutunut suoran työn kustannus valmistuskustannuksissa.
+        "direct_work_cost_actual" : pd.NA, #UUSI
         #Valmistuksen suunnitellut suorat materiaalikulut. Voidaan laskea esim. materiaalien alkuvaraston arvo + ostot - loppuvaraston arvo.
         "material_cost_planned" : pd.NA,
+        #Valmistuksen toteutuneet suorat materiaalikulut.
+        "material_cost_actual" : pd.NA,
         #Alihankinnan suunnitellut suorat kulut. Voi sisältää myös alihankintaan liittyvät logistiikkakulut
         "subcontracting_cost_planned" : pd.NA,
         #Muut muuttuvat kustannukset, kuten rahti, pakkaus, menetelmälisät…
         "other_direct_costs" : pd.NA,
         #Tuotannon suunnitellut suorat tuotantokustannukset (välittömät kustannukset) ilman yleiskustannuslisää eli summattuna suora työ + materiaalit + alihankinta + muut suorat kustannukset.
         "prime_cost_planned_sum":  pd.NA,
+        #Tuotannon toteutuneet suorat tuotantokustannukset (välittömät kustannukset) ilman yleiskustannuslisää eli summattuna suora työ + materiaalit + alihankinta + muut suorat kustannukset.
+        "prime_cost_actual_sum" : pd.NA, #UUSI
         #Suunnitellut suorat tuotantokustannukset kappaletta kohti.
         "unit_prime_cost_planned": pd.NA,
+        #Toteutuneet suorat tuotantokustannukset kappaletta kohti.
+        "unit_prime_cost_actual" : pd.NA,
         #Tarjousvaiheessa laskettu myyntikate sisältäen yleiskustannuslisän ja voitto-osuuden. Voidaan laskea esim. total_price - prime_cost_planned_sum
         "sales_margin_planned":   pd.NA,
+        #Toteutunut myyntikate sisältäen yleiskustannuslisän ja voitto-osuuden. Voidaan laskea esim. total_price - prime_cost_actual_sum
+        "sales_margin_actual" : pd.NA,
         #Hintaan laskettu yleiskustannuslisä eli tilaukselle määritetty  välillisten kustannusten osuus. Yleensä laskettu jonain lisäprosenttina tuotantokustannusten päälle.
         "overhead_costs_planned" : pd.NA,
+        #Totetunut yleiskustannuslisä eli tilaukselle määritetty välillisten kustannusten osuus.
+        "overhead_costs_actual" : pd.NA, #UUSI
         #Suunnitellut täydet valmistuskustannukset yhteensä. Sisältää suorat tuotantokustannukset ja yleiskustannukset. Synonyyminä usein "omakustannehinta"
         "manufacturing_cost_planned" : pd.NA,
+        #Toteutuneet täydet valmistuskustannukset yhteensä. Sisältää suorat tuotantokustannukset ja yleiskustannukset. Synonyyminä usein "omakustannehinta"
+        "manufacturing_cost_actual" : pd.NA, #UUSI
         #Suunnitellut valmistuskustannukset kappaletta kohti.
         "unit_manufacturing_cost_planned" : pd.NA,
+        #Toteutuneet valmistuskustannukset kappaletta kohti.
+        "unit_manufacturing_cost_actual": pd.NA, #UUSI
         #Suunniteltu voittolisä kaikkien kustannusten vähennyksen jälkeen. Lasketaan vähentämällä myyntihinnasta kaikki kulut. Lasketaan yleensä jonain prosenttina omakustannehinnan päälle.
         "profit_planned" : pd.NA,
+        #Toteutunut voittolisä kaikkien kustannusten vähennyksen jälkeen. Lasketaan vähentämällä myyntihinnasta kaikki kulut. Lasketaan yleensä jonain prosenttina
+        "profit_actual" : pd.NA, #UUSI
         #Tilattu yksikkö.
         "unit": to_int64(combined_sales["UnitId"]),
         #Käytetty valuutta.
@@ -1629,35 +1693,46 @@ def process_and_stage_fact_order_rows(combined_sales_path: Path):
     )
 
 
+# Sheetit kerätään tähän muistiin sitä mukaa kun niitä syntyy, ja koko
+# Excel-tiedosto kirjoitetaan levylle vasta kerran, flush_excel()-kutsulla.
+# Aiemmin joka append_df_to_excel-kutsu avasi tiedoston mode="a" -tilassa,
+# mikä pakotti openpyxl:n lukemaan koko (kasvavan) tiedoston takaisin
+# muistiin ja kirjoittamaan sen kokonaan uudelleen JOKAISELLA kutsulla.
+# Isoilla fact-tauluilla tämä oli käytännössä O(n^2) ja selitti pitkän
+# (~30 min) ajoajan. Nyt jokainen taulu kirjoitetaan levylle vain kerran.
+_sheets_to_write: "dict[str, pd.DataFrame]" = {}
+
+
 def append_df_to_excel(df: pd.DataFrame, sheet_name: str):
-    logger.info("Saving excel: " + sheet_name)
+    logger.info("Queuing sheet for excel: " + sheet_name)
     df = clean_dataframe_for_excel(df)
     df = convert_large_ints_to_str(df)
-    if EXCEL_PATH.exists():
-        # Append-mode: if_sheet_exists sallittu
-        with pd.ExcelWriter(
-            EXCEL_PATH,
-            engine="openpyxl",
-            mode="a",
-            if_sheet_exists="replace"
-        ) as writer:
+    _sheets_to_write[sheet_name[:31]] = df
+
+
+def flush_excel():
+    """
+    Kirjoittaa kaikki append_df_to_excel:lla kerätyt taulut EXCEL_PATH:iin
+    yhdellä ExcelWriter-sessiolla. Kutsu tämä kerran, kun kaikki DAG:n
+    taulut on käsitelty (esim. erp_file_processor_test()-funktion lopussa).
+    """
+    if not _sheets_to_write:
+        logger.info("Ei kirjoitettavia sheettejä, ohitetaan Excel-tallennus.")
+        return
+
+    logger.info(f"Kirjoitetaan {len(_sheets_to_write)} sheettiä tiedostoon: {EXCEL_PATH}")
+    with pd.ExcelWriter(
+        EXCEL_PATH,
+        engine="openpyxl",
+        mode="w",
+    ) as writer:
+        for sheet_name, df in _sheets_to_write.items():
             df.to_excel(
                 writer,
-                sheet_name=sheet_name[:31],
+                sheet_name=sheet_name,
                 index=False
             )
-    else:
-        # Write-mode: EI if_sheet_exists
-        with pd.ExcelWriter(
-            EXCEL_PATH,
-            engine="openpyxl",
-            mode="w"
-        ) as writer:
-            df.to_excel(
-                writer,
-                sheet_name=sheet_name[:31],
-                index=False
-            )
+    logger.info(f"Excel-tallennus valmis: {EXCEL_PATH}")
 
 _ILLEGAL_EXCEL_CHARS_RE = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
 
@@ -1675,7 +1750,7 @@ def convert_large_ints_to_str(
         s = df[col]
 
         if s.notna().any():
-            max_len = s.dropna().astype(str).str.len().max()
+            max_len = s.dropna().astype("string").str.len().max()
 
             if max_len > max_digits:
                 df[col] = s.astype("string")
@@ -1756,10 +1831,9 @@ def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
     
     phase_duration_stamping_min = production_time_stamped_min + setup_time_stamped_min
 
-    setup_time_machine_min = pd.NA
 
     start_date_original_planned = to_yyyymmdd(combined_manufacturing["PlannedStartDate"])
-    start_date_actual = to_yyyymmdd(combined_manufacturing["ActualStartDate"])
+
 
     finish_date_original_planned = to_yyyymmdd(combined_manufacturing["PlannedFinishDate"])
     finish_date_actual = to_yyyymmdd(combined_manufacturing["ActualFinishDate"])
@@ -1767,7 +1841,6 @@ def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
     start_timestamp_planned = get_date_key(combined_manufacturing["PlannedStartDate"])
     finish_timestamp_planned = get_date_key(combined_manufacturing["PlannedFinishDate"])
 
-    start_timestamp_actual= get_date_key(combined_manufacturing["ActualStartDate"])
     finish_timestamp_actual = get_date_key(combined_manufacturing["ActualFinishDate"])
 
 
@@ -1790,6 +1863,24 @@ def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
         utc=True
     )
 
+    actual_finish = combined_manufacturing["ActualFinishDate"]
+    phase_duration_per_piece_min = phase_duration_stamping_min / produced_qty
+
+    actual_start_derived = actual_finish - pd.to_timedelta(
+        phase_duration_per_piece_min,
+        unit="m"
+    )
+
+    start_date_actual = to_yyyymmdd(actual_start_derived).fillna(
+        to_yyyymmdd(combined_manufacturing["ActualStartDate"])
+    )
+
+    start_timestamp_actual = get_date_key(actual_start_derived)
+
+    start_timestamp_actual = pd.Series(start_timestamp_actual).fillna(
+        get_date_key(combined_manufacturing["ActualStartDate"])
+    )
+
     duration = (finish - start).dt.total_seconds() / 60
 
     fact_workphases = pd.DataFrame({
@@ -1798,20 +1889,22 @@ def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
         #Liittää työvaiheen tilausrvitauluun. Monesta-yhteen tyyppinen yhteys.
         "order_row_id": to_int64(combined_manufacturing["OperationRowId"]),
         #Tuotantotilauksen uniikki tunniste. Tuotantotilauksille ei ole omaa taulua tässä tietomallissa, joten kyseessä "degenoitunut dimensio"
-        "work_number": pd.NA,
+        "work_number": combined_manufacturing["OrderNumber"],
         #Työtilauksen tunniste. Ei ole erikseen dimensiotaulua.
         "work_id" : to_int64(combined_manufacturing["ManufacturingOrderId"]),
         #Yksittäisen koneen/kuormitusryhmän/muun työkeskuksen tunniste (koneet, alihankkijat, muut työvaiheet). Tässä tietomallissa erilaiset työkeskukset tulevat samalla tavalla. 
         #Yhdistyy dim_workcenter ulottuvuustauluun. Vaatii tarkempaa määritystä mm. tilanteessa, jossa työ on toteutettu eri koneella kuin alkujaan suunniteltu tai työvaihe on jaettu usean koneen kesken.
         "workcenter_id" : to_int64(combined_manufacturing["WorkCenterId"]),
         #Työkeskuksen tyypin tunniste. Yhdistyy dim_workcenter_group tauluun. 
-        "workcenter_group_id" : pd.NA,
+        "workcenter_group_id" : pd.NA, #UUSI
         #Nimikkeen/tuotteen tunniste. Yhdistyy dim_article ulottuvuustauluun.
         "article_id": to_int64(combined_manufacturing["OperationPartId"]),
         #Työvaiheen numero. Tyypillisesti järjestyksessä, jos useampi vaihe työssä.
         "phase_number" : combined_manufacturing["OperationNumber"],
         #Työvaiheen kuvaus, jos saatavilla. Voidaan käyttää erottamaan eri tyyppisiä työvaiheita toisistaan (työstö, alihankinta, kokoonpano…)
         "phase_description" : combined_manufacturing["Description_x"],
+        #Tieto siitä, onko kyseessä alihankintatyövaihe
+        "subcontracting_phase" : combined_manufacturing["IsSubcontractor"],
         #Työvaiheen alkuperäinen suunniteltu aloituspäivä ERP/MES järjestelmästä.
         "start_date_original_planned" : start_date_original_planned,
         #Työvaiheen viimeisin suunniteltu aloituspäivä ERP/MES järjestelmästä. Ensimmäinen ajankohta, jos on pilkottu useaan osaan vaihe.
@@ -1819,9 +1912,9 @@ def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
         #Työvaiheen toteutunut aloituspäivä (yleensä leimausdatasta).
         "start_date_actual": start_date_actual,
         #Työvaiheen alkuperäinen suunniteltu lopetuspäivä ERP/MES järjestelmästä.
-        "end_date_orginal_planned": finish_date_original_planned,
+        "end_date_orginal_planned": get_date_key(combined_manufacturing["InitialFinishDate"]),
         #Työvaiheen viimeisin suunniteltu lopetuspäivä ERP/MES järjestelmästä. Viimeinen ajankohta, jos on pilkottu useaan osaan vaihe.
-        "end_date_latest_planned": pd.NA,
+        "end_date_latest_planned": finish_date_original_planned,
         #Työvaiheen toteutunut lopetuspäivä (yleensä leimausdatasta).
         "end_date_actual": finish_date_actual,
         #Työvaiheen viimeisin suunniteltu aloitusaika ERP/MES järjestelmästä (jos saatavilla). Semanttisessa muodossa (HHMMSS). Aika on aikaleiman aikavyöhykkeessä.
@@ -1857,7 +1950,7 @@ def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
         #Suunniteltu asetustyön kesto minuuteissa.
         "setup_time_planned_min": setup_time_planned_min,
         #Toteutunut asetustyön kesto minuuteissa leimausdatan pohjalta (jos saatavilla)
-        "setup_time_stamped_min": setup_time_stamped_min,
+        "setup_time_stamping_min": setup_time_stamped_min,
         #Toteutunut asetustyön kesto minuuteissa konedatan pohjalta (jos saatavilla)
         "setup_time_machine_min": pd.NA,
         #Vaiheen suunniteltu työstöaika minuutteina.
@@ -1869,7 +1962,7 @@ def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
         #Suunniteltu yhteenlaskettu vaiheaika sisältäen asetustyön ja työstöajan.
         "phase_duration_planned_min": phase_duration_planned_min,
         #Toteutunut leimauksista yhteenlaskettu vaiheaika sisältäen asetustyön ja työstöajan. Kaikkien erillisten työstökertojen summa.
-        "phase_duration_stamping_min": combined_manufacturing["ReportedUnitTimeSum"],
+        "phase_duration_stamping_min": ticks_to_minutes(combined_manufacturing["ReportedUnitTimeSum"]),
         #Toteutunut konedatasta yhteenlaskettu vaiheaika sisältäen asetustyön ja työstöajan. Kaikkien erillisten työstökertojen summa.
         "phase_duration_machine_min": pd.NA,
         #Yhden kappaleen suunniteltu kappaleaika. Saadaan jakamalla suunniteltu vaiheaika (phase_duration_planned_min) suunniteltujen kappaleiden määrällä.
@@ -1878,12 +1971,16 @@ def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
         "unit_time_stamping_min" : phase_duration_stamping_min / produced_qty,
         #Yhden kappaleen konedatan perusteella kappaleaika. Saadaan jakamalla laskettu vaiheaika tuotettujen kappaleiden määrällä.
         "unit_time_machine_min" : pd.NA,
+        #Yhden kappaleen paras mahdollinen tavoiteltu sykliaika/jaksoaika = aika kahden valmistuneen kappaleen välillä. Voi olla eri kuin mitä suunnittelussa käytetään. Käytetään OEE laskennassa, jos saatavilla.
+        "cycle_time_ideal_min" : pd.NA,
         #Yhden kappaleen suunniteltu sykliaika/jaksoaika = aika kahden valmistuneen kappaleen välillä.
         "cycle_time_planned_min" : pd.NA,
         #Yhden kappaleen leimausten perusteella sykliaika/jaksoaika = aika kahden valmistuneen kappaleen välillä. Paras arvio, jos on erikseen mitattu ja leimattu.
         "cycle_time_stamping_min" : pd.NA,
         #Yhden kappaleen konedatan perusteella laskettu sykliaika/jaksoaika. Laskettu keskimääräinen tai mediaaniaika kappaleen valmistumisesta seuraavan kappaleen valmistumiseen.
         "cycle_time_machine_min" : pd.NA,
+        #Yhden kappaleen tavoiteltu koneistusaika = aika kappaleen koneistuksen alkamisesta päättymiseen. Voi olla eri asia kuin suunniteltu tai toteutunut koneistusaika.
+        "processing_time_ideal_min" : pd.NA,
         #Yhden kappaleen suunniteltu koneistusaika = aika kappaleen koneistuksen alkamisesta päättymiseen.
         "processing_time_planned_min" : pd.NA,
         #Leimausdatan perusteella yhden kappaleen koneistusaika = aika kappaleen koneistuksen alkamisesta päättymiseen.
@@ -1952,7 +2049,7 @@ def process_and_stage_fact_machine_events(combined_manufacturing_reporting_path:
         #Yhdistää konetapahtuman jonkin työtilauksen vaiheeseen eli fact_workphases taulun riviin.
         "workphase_id": to_int64(combined_reportings["ManufacturingOrderOperationId"]),
         #Tuotantotilauksen uniikki tunniste. Tuotantotilauksille ei ole omaa taulua tässä tietomallissa, joten kyseessä "degenoitunut dimensio"
-        "work_number" : pd.NA,
+        "work_number" : combined_reportings["OrderNumber"],
         #Työtilauksen tunniste. Ei ole erikseen dimensiotaulua.
         "work_id" : to_int64(combined_reportings["ManufacturingOrderId"]),
         #Koneen/työkeskuksen tunniste. Yhdistyy dim_machine taulun konetietoihin.
@@ -1968,7 +2065,7 @@ def process_and_stage_fact_machine_events(combined_manufacturing_reporting_path:
         #Konetapahtuman päättymispäivä semanttisessa avainformaatissa (YYYYMMDD).
         "end_date": to_yyyymmdd(combined_reportings["ReportingTimestamp"]),
         #Tapahtuman aloitusaika. Semanttisessa muodossa (HHMMSS). Aika on aikaleiman aikavyöhykkeessä.
-        "start_time": duration_to_hhmmss_from_ticks(subtract_ticks_from_timestamp(combined_reportings["ReportingTimestamp"],combined_reportings["ActualStartDate"])),
+        "start_time": to_hhmmss(finish - start) ,
         #Tapahtuman lopetusaika. Semanttisessa muodossa (HHMMSS). Aika on aikaleiman aikavyöhykkeessä.
         "end_time": to_hhmmss(combined_reportings["ReportingTimestamp"]),
         #Tapahtuman aloituksen aikaleima ISO8601 formaatissa.
@@ -1984,9 +2081,13 @@ def process_and_stage_fact_machine_events(combined_manufacturing_reporting_path:
         #Yhden kappaleen työstöaika. Aika kappaleen työstön aloituksesta työstön loppumiseen. Useamman kappaleen tapauksessa esim. keskiarvo.
         "unit_processing_time_min" : pd.NA,
         #Tuotettujen kappaleiden määrä tapahtuman aikana.
-        "produced_qty": combined_reportings["Quantity"],
+        "produced_qty_stamping": combined_reportings["Quantity"],
+        #Konedatasta laskettu tuotettujen kappaleiden määrä tapahtuman aikana.
+        "produced_qty_machine":pd.NA, #UUSI
         #Hylättyjen kappaleiden määrä. Mahdollisesti saatavilla leimausdatassa.
-        "rejected_qty": combined_reportings["RejectedQuantity"],
+        "rejected_qty_stamping": combined_reportings["RejectedQuantity"],
+        #Koneen kappalelaskurin arvo tapahtuman loputtua.
+        "part_counter" : pd.NA, #UUSI
         #Koneen tehokas työstöaika tapahtuman aikana johdettuna konedatasta.
         "efficient_production_min" : pd.NA,
         #Tehokkaan työstöajan osuus tapahtuman ajasta (effective_production_min/duration_min).
@@ -1995,10 +2096,34 @@ def process_and_stage_fact_machine_events(combined_manufacturing_reporting_path:
         "inefficient_production_min" : pd.NA,
         #Tehottoman työstöajan osuus tapahtuman ajasta (ineffective_production_min/duration_min).
         "inefficient_production_pct" : pd.NA,
+        #Koneen varsinainen lastuamisaika aktiivisen työn aikana.
+        "cutting_time_min" : pd.NA, #UUSI
+        #Aktiivisen työn aikana osuus ajasta, jolloin lastu ei irtoa. Sisältää esim. työstöpäiden pikaliikkeet, työkalujen vaihdot, työstönaikaiset mittaukset jne.
+        "non_cuting_time_min" : pd.NA, #UUSI
+        #Keskimääräinen syötön prosenttikytkimen (feed rate override) arvo työstön aikana.
+        "feed_override" : pd.NA, #UUSI
+        #Keskimääräinen karan nopeuden prosenttikytkimen (spindle speed override) arvo työstön aikana.
+        "spindle_override": pd.NA,
         #Aktiivisen työstön määrä minuutteina.
         "machine_active_min": pd.NA,
         #Aktiivisen työstöajan osuus tapahtuman ajasta (machine_active_min/duration_min).
         "machine_active_pct": pd.NA,
+        #setusajan määrä tapahtuman aikana. On yrityskohtaista mitä asetusaikaan sisällytetään.
+        "setup_time_min" : pd.NA,
+        #Asetusajan osuus tapahtuman kokonaisajasta.
+        "setup_time_pct" : pd.NA,
+        #Kappaleen vaihtoajan määrä tapahtuman aikana. Vaihtoaika on aika kappaleen työstön päättymisestä seuraavan kappaleen työstön alkuun saman työvaiheen aikana.
+        "part_change_time_min" : pd.NA,
+        #Vaihtoajan osuus tapahtuman kokoanaisajasta.
+        "part_change_time_pct" : pd.NA,
+        #Muun tyhjäkäyntiajan määrä tapahtuman aikana. Käytetään, jos aikaa ei voi määrittää asetusajaksi tai kappaleen vaihtoajaksi.
+        "undefined_idle_min" : pd.NA,
+        #Muun tyhjäkäynnin osuus tapahtuman kokonaisajasta.
+        "undefined_idle_pct": pd.NA,
+        #Summattu koneen tyhjäkäynti minuutteina tapahtuman aikana (setup_time_min + part_change_time_min + undefimed_idle_min)
+        "idle_sum_min" : pd.NA,
+        #Tyhjäkäynnin osuus tapahtuman ajasta (idle_sum_min/duration_min).
+        "idle_sum_pct" : pd.NA,
         #Koneen tyhjäkäynti minuutteina. Kone on päällä minuutteina, mutta ei työstä.
         "idle_min": pd.NA,
         #Tyhjäkäynnin osuus tapahtuman ajasta (idle_min/duration_min).
@@ -2007,6 +2132,10 @@ def process_and_stage_fact_machine_events(combined_manufacturing_reporting_path:
         "power_off_min": pd.NA,
         #Poissaolon aika koko ajasta (power_off_min/duration_min).
         "power_off_pct": pd.NA,
+        #Aika jota ei saatu kohdistettua mihinkään tapahtuman aikana. Esimerkiksi erotus duration_min ja eri tila-aikojen summasta.
+        "other_min": pd.NA,
+        #Kohdistumattoman ajan osuus tapahtuman kokonaisajasta.
+        "other_pct" : pd.NA,
         #Poikkeustilan (koneessa esim. virhetila päällä) kesto minuutteina.
         "exception_min": pd.NA,
         #Poikkeustilan osuus koko ajasta (exception_min/duration_min).
@@ -2158,6 +2287,11 @@ def erp_file_processor_test():
     for endpoint, files in sales_files.items():
         for file_path in files:
             process_erp_files(Path(file_path))
+
+    time_recording_files = get_latest_endpoint_files("time_recording")
+    for endpoint, files in time_recording_files.items():
+        for file_path in files:
+            process_erp_files(Path(file_path))
     
     combined_manufacturing = combine_manufacturing_data(LOCAL_STAGED_PATH / "manufacturing",LOCAL_STAGED_PATH / "common",combine_manufacturing_tables)
     combined_sales = combine_sales_data(LOCAL_STAGED_PATH / "sales",LOCAL_STAGED_PATH /"manufacturing", combine_sales_tables)
@@ -2170,3 +2304,6 @@ def erp_file_processor_test():
     process_and_stage_fact_machine_events(Path(combined_reportings))
     processed_dim = process_dim()
 
+    # Kaikki taulut on nyt kerätty muistiin append_df_to_excel:lla.
+    # Kirjoitetaan koko Excel-tiedosto levylle yhdellä kertaa.
+    flush_excel()

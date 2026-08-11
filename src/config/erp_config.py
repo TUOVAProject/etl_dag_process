@@ -90,13 +90,13 @@ ERP_SOURCE_CONFIG = {
                                                 "RestQuantity","ReportedUnitTime",
                                                 "ReportedSetupTime","RejectedQuantity","ManufacturingOrderId","OperationNumber","PlannedSetupTime","PlannedUnitTime",
                                                 "PlannedStartDate","PlannedFinishDate","ActualStartDate","ActualFinishDate","ManufacturingOrderNodeId","Status",
-                                                "OperationRowId","Description"],
+                                                "OperationRowId","Description","FixedLeadTime"],
         "ManufacturingOrders" : ["Id","OrderNumber","Status","WarehouseId","PartId","ReportedQuantity","PlannedQuantity","RestQuantity","StartDate","FinishDate",
                                     "CustomerOrderId","CustomerId","InitialFinishDate","OrderTypeId"],
         "ManufacturingOrderTypes" : ["Id","Description"],
         "MaterialRows" : ["Id","PartId","Quantity","SetupQuantity"],
         "OperationRowControlDataRows" : [],
-        "OperationRows" : ["Id","OperationNumber","Description","WorkCenterId","IsSubcontractor","SetupTime","UnitTime","QueueTime","UnitCost","SetupCost"],
+        "OperationRows" : ["Id","OperationNumber","Description","WorkCenterId","IsSubcontractor","SetupTime","UnitTime","QueueTime","UnitCost","SetupCost","FixedLeadTime"],
         "OrderQuantityManufacturingOrderOperations" : [],
         "OrderQuantityManufacturingOrders" : [],
         "Preparations" : ["Id","PartNumber","Description"],
@@ -141,6 +141,13 @@ ERP_SOURCE_CONFIG = {
         "PurchaseOrderInvoiceRows" : [
             "Id","PurchaseOrderDeliveryRowId","Price","SetupPrice","VatRateId","Discount","StandardPrice",
         ],
+    },
+    "time_recording" : {
+        "WorkIntervals" : ["IntervalStart","IntervalEnd","IsClosedInterval", "BundleId","WorkRecordingType","IndirectWorkCodeId", "OperationId",
+          "TimeCalculationType","ReportingEmployeeId", "WorkCenterId","WorkedTime",
+          "OfWichOvertime","ReportedQuantity","RejectedQuantity", "ActivityId", "CommentId", "Comment"
+          ]
+  
     }
 }
 
@@ -169,8 +176,8 @@ combine_manufacturing_tables = {
         "PlannedQuantity","ReportedQuantity","RejectedQuantity","RestQuantity",
         "ReportedUnitTime","PlannedUnitTime","ReportedSetupTime","PlannedSetupTime",
         "ManufacturingOrderId","OperationNumber","OperationRowId","PlannedStartDate","ActualStartDate",
-        "PlannedFinishDate","ActualFinishDate","WorkshopOperationStatus","Description"],
-    "OperationRows" : ["Id","OrderOperation","UnitTime","IsSubcontractor","UnitCost","SetupCost"],
+        "PlannedFinishDate","ActualFinishDate","WorkshopOperationStatus","Description","FixedLeadTime"],
+    "OperationRows" : ["Id","OrderOperation","UnitTime","IsSubcontractor","UnitCost","SetupCost","FixedLeadTime"],
     "ExtraFieldGroups" : ["Id","Name","RowNumber"],
     "ExtraFieldOptionTemplates" : ["Id","Code","Description","ExtraFieldTemplateId"],
     "ExtraFields" : ["Id","ParentId","ParentClass","SelectedOptionId","SelectedOptionIds"],

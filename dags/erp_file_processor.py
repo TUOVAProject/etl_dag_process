@@ -27,6 +27,7 @@ from fetchers.inventory import fetch_inventory
 from fetchers.manufacturing import fetch_manufacturing
 from fetchers.sales import fetch_sales
 from fetchers.purchases import fetch_purchases
+from fetchers.time_recording import fetch_time_recording
 from auth.auth import get_token
 
 #When testing locally use src.config.erp_config import path
@@ -898,7 +899,7 @@ def combine_manufacturing_data(staged_manufacturing_path: Path, staged_common_pa
         if col in merged.columns:
             merged[col] = (
                 merged[col]
-                .astype(str)
+                .astype("string")
                 .str.strip()
                 .str.replace(",", ".", regex=False)
             )
@@ -1104,7 +1105,7 @@ def _clean_datetime_column(df: pd.DataFrame, col: str) -> pd.DataFrame:
     return df
 
 def _clean_key_series(series: pd.Series) -> pd.Series:
-    s = series.astype(str).str.strip()
+    s = series.astype("string").str.strip()
     s = s.replace({
         "": np.nan,
         "nan": np.nan,
@@ -1221,8 +1222,8 @@ def combine_manufacturing_reportings(
 
     
     if "Code" in manufacturing_orders.columns:
-        manufacturing_orders["Code"] = manufacturing_orders["Code"].astype(str).str.strip()
-        customers["ResolvedCustomerCode"] = customers["ResolvedCustomerCode"].astype(str).str.strip()
+        manufacturing_orders["Code"] = manufacturing_orders["Code"].astype("string").str.strip()
+        customers["ResolvedCustomerCode"] = customers["ResolvedCustomerCode"].astype("string").str.strip()
 
         customers = customers.drop_duplicates(subset=["ResolvedCustomerCode"])
 
@@ -1575,7 +1576,7 @@ def convert_large_ints_to_str(
         s = df[col]
 
         if s.notna().any():
-            max_len = s.dropna().astype(str).str.len().max()
+            max_len = s.dropna().astype("string").str.len().max()
 
             if max_len > max_digits:
                 df[col] = s.astype("string")
@@ -2108,6 +2109,10 @@ def fetch_sales_task():
 def fetch_purchases_task():
     fetch_purchases()
 
+@task()
+def fetch_time_recording_task():
+    fetch_time_recording()
+
 @dag(
     dag_id="erp_file_processor",
     default_args=default_args,
@@ -2125,18 +2130,21 @@ def erp_file_processor():
     t_manufacturing = fetch_manufacturing_task()
     t_sales = fetch_sales_task()
     t_purchases = fetch_purchases_task()
+    t_time_recordings = fetch_time_recording_task()
     
     manufacturing_files = get_latest_endpoint_files_task("manufacturing")
     common_files = get_latest_endpoint_files_task("common")
     inventory_files = get_latest_endpoint_files_task("inventory")
     sales_files = get_latest_endpoint_files_task("sales")
     purchase_files = get_latest_endpoint_files_task("purchase")
+    time_recording_files = get_latest_endpoint_files_task("time_recording")
 
     process_manufacturing = process_erp_files_task(manufacturing_files)
     process_common = process_erp_files_task(common_files)
     process_inventory = process_erp_files_task(inventory_files)
     process_sales = process_erp_files_task(sales_files)
     process_purchases = process_erp_files_task(purchase_files)
+    process_time_recording = process_erp_files_task(time_recording_files)
     
 
     combined_orders = combine_manufacturing_data_task(str(LOCAL_STAGED_PATH / "manufacturing"),str(LOCAL_STAGED_PATH / "common"),combine_manufacturing_tables)

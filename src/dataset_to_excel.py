@@ -12,7 +12,8 @@ INPUT_DIRS = [
     "results/raw/manufacturing",
     "results/raw/sales",
     "results/raw/accounting",
-    #"results/raw/purchase"
+    #"results/raw/purchase",
+    "results/raw/timerecording"
 ]
 
 COMBINED_DIRS = [
