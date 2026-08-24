@@ -12,7 +12,8 @@ def fetch_time_recording():
         "Accept" : "application/json"
         }
     endpoints = [
-        "/WorkIntervals"
+        "/WorkIntervals",
+        "/IndirectWorkCodes"
     ]
     query = "?$orderby=Id desc"
 
@@ -40,8 +41,8 @@ def fetch_time_recording():
     results = {}
     for ep in endpoints:
         data = get_common_data(ep)
-        save_parquet(ep,data,base_path="results/raw/timerecording")
-        clean_folder(ep, days_to_keep = 2, base_path="results/raw/timerecording")
+        save_parquet(ep,data,base_path="results/raw/time_recording")
+        clean_folder(ep, days_to_keep = 2, base_path="results/raw/time_recording")
         results[ep] = data
     return results
 

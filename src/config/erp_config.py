@@ -108,7 +108,7 @@ ERP_SOURCE_CONFIG = {
     
     "sales" : {
         "CustomerOrderRows" : ["Id","PartId","DeliveredQuantity","DeliveryDate","DesiredDeliveryDate","LinkedManufacturingOrderId","InitialDeliveryDate","OrderDate","OrderedQuantity","OrderRowType",
-                                     "ParentOrderId","ParentRowId","Price","StandardPrice","PriceInCompanyCurrency","RevisionId","NewFinishDate","UnitId"],
+                                     "ParentOrderId","ParentRowId","Price","StandardPrice","PriceInCompanyCurrency","RevisionId","NewFinishDate","UnitId","PartStatus","Status"],
         "CustomerOrders" : ["Id","CustomerId","InvoiceCustomerId","OrderDate","OrderNumber","OrderTypeId","Status","SellerId"],
         "CustomerOrderTypes" : ["Id","Description","IncludeInStatistics"],
         "Customers" : ["Id","Name","Code","AlternativeName"],
@@ -143,12 +143,16 @@ ERP_SOURCE_CONFIG = {
         ],
     },
     "time_recording" : {
-        "WorkIntervals" : ["IntervalStart","IntervalEnd","IsClosedInterval", "BundleId","WorkRecordingType","IndirectWorkCodeId", "OperationId",
+        "WorkIntervals" : ["Id","IntervalStart","IntervalEnd","IsClosedInterval", "BundleId","WorkRecordingType","IndirectWorkCodeId", "OperationId",
           "TimeCalculationType","ReportingEmployeeId", "WorkCenterId","WorkedTime",
           "OfWichOvertime","ReportedQuantity","RejectedQuantity", "ActivityId", "CommentId", "Comment"
-          ]
+          ],
+        "IndirectWorkCodes" : [
+            "Id","Code","Description","CommentInputType","AffectsOrder","ColorCode","Active"
+        ]
   
     }
+    
 }
 
 euro_columns = {
@@ -162,11 +166,11 @@ euro_columns = {
 
 combine_sales_tables = {
     "CustomerOrderRows" : ["Id","PartId","DeliveredQuantity","DeliveryDate","DesiredDeliveryDate","LinkedManufacturingOrderId","InitialDeliveryDate","OrderDate","OrderedQuantity","OrderRowType",
-                                     "ParentOrderId","ParentRowId","Price","PriceInCompanyCurrency","RevisionId","NewFinishDate","UnitId"],
+                                     "ParentOrderId","ParentRowId","Price","PriceInCompanyCurrency","RevisionId","NewFinishDate","UnitId","PartStatus","Status"],
     "CustomerOrders" : ["Id","CustomerId","InvoiceCustomerId","OrderDate","OrderNumber","OrderTypeId","Status","SellerId"],
     "Customers" : ["Id","Name","Code","AlternativeName"],
-    "InvoiceLogs" : ["Id","CustomerOrderId","InvoicedQuantity","Price","LoggingTimestamp"],
-    "ManufacturingOrders" : ["Id","StartDate","InitialFinishDate","FinishDate","CustomerOrderId"],
+    "InvoiceLogs" : ["Id","CustomerOrderId","InvoicedQuantity","Price","LoggingTimestamp","InvoiceDate"],
+    "ManufacturingOrders" : ["Id","OrderNumber","StartDate","InitialFinishDate","FinishDate","CustomerOrderId","Status"],
     "ManufacturingOrderOperations" : ["Id","ManufacturingOrderId","ActualStartDate","ActualFinishDate"],
 }
 
@@ -183,6 +187,7 @@ combine_manufacturing_tables = {
     "ExtraFields" : ["Id","ParentId","ParentClass","SelectedOptionId","SelectedOptionIds"],
     "ExtraFieldTemplates" : ["Id","Name","ParentId","RowNumber"],
     "WorkCenters" : ["Id","Number"],
+    "CustomerOrderRows" : ["Id","LinkedManufacturingOrderId"],
 }
 
 combine_reporting_tables = {
@@ -262,6 +267,12 @@ combine_material_tables = {
     "CustomerOrderRows" : [
         "Id","Price","StandardPrice"
     ],
+}
+
+combine_work_interval_tables = {
+    "ManufacturingOrders" : ["Id","OrderNumber","PartId"],
+    "ManufacturingOrderOperations" : ["Id","OrderNumber","ManufacturingOrderId","WorkCenterId","PartId"],
+    "WorkIntervals" : ["Id","OperationId","ReportingEmployeeId","IntervalStart","IntervalEnd","WorkedTime","ReportedQuantity","RejectedQuantity"],
 }
 
 #Datamodel

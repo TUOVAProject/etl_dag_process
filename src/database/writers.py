@@ -3,11 +3,11 @@ import re
 import pandas as pd
 from sqlalchemy.engine import Engine, Connection
 from sqlalchemy import text
-from typing import Literal, Union
+from typing import Literal, Union, List, Optional
 
 
 IdentifierMode = Literal["truncate", "delete"]
-WriteMode = Literal["fail", "replace", "append", "delete_rows", "truncate_insert", "delete_insert"]
+WriteMode = Literal["fail", "replace", "append"]
 
 
 def _quote_identifier(identifier: str) -> str:
@@ -39,30 +39,40 @@ def clear_table(
         conn.execute(statement)
 
 
+def truncate_fact_tables(
+    conn: Union[Engine, Connection],
+    fact_tables: List[str],
+):
+    tables = ", ".join(f'"{table}"' for table in fact_tables)
+
+    conn.execute(
+        text(
+            f"TRUNCATE TABLE {tables} RESTART IDENTITY"
+        )
+    )
+
 def save_df(
     df: pd.DataFrame,
     table_name: str,
-    conn : Union[Engine, Connection],
+    conn: Union[Engine, Connection],
     if_exists: WriteMode = "append",
+    clear_before_insert: Optional[IdentifierMode] = None,
+    
 ):
 
-    write_mode = if_exists
+    if clear_before_insert:
+        clear_table(
+            table_name,
+            conn,
+            mode=clear_before_insert
+        )
 
-    if write_mode == "truncate_insert":
-        clear_table(table_name, conn, mode="truncate")
-        write_mode = "append"
-    elif write_mode == "delete_insert":
-        clear_table(table_name, conn, mode="delete")
-        write_mode = "append"
-
-    
     if isinstance(conn, Engine):
-        # Oma per-kutsu transaktio
         with conn.begin() as conn:
             df.to_sql(
                 table_name,
                 con=conn,
-                if_exists=write_mode,
+                if_exists=if_exists,
                 index=False,
                 method="multi",
                 chunksize=1000,
@@ -71,7 +81,7 @@ def save_df(
         df.to_sql(
             table_name,
             con=conn,
-            if_exists=write_mode,
+            if_exists=if_exists,
             index=False,
             method="multi",
             chunksize=1000,

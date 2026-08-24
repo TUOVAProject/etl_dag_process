@@ -1,0 +1,2 @@
+user_id fk poistettu machine_events - taulusta, koska usereita ei ole haettu (Persons)
+seller_id fk poistettu fact_order_row taulusta, tarkista mistä taulusta otetaan
