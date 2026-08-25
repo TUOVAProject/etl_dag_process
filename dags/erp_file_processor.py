@@ -37,8 +37,6 @@ from config.erp_config import (
 
 FACT_TABLES = [
     "fact_order_rows",
-    "fact_workphases",
-    "fact_machine_events",
 ]
 
 
@@ -169,45 +167,6 @@ def to_float64(series: pd.Series) -> pd.Series:
     if pd.api.types.is_string_dtype(series) or pd.api.types.is_object_dtype(series):
         series = series.astype("string").str.strip().replace("", pd.NA)
     return pd.to_numeric(series, errors="coerce").astype("Float64")
-
-
-def load_json_with_converters(file_path, euro_columns=list(), dtypes=dict()):
-    """
-    Loads a single JSON file and converts euro-formatted numbers and dtypes.
-    """
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except json.JSONDecodeError as e:
-        logger.error(f"Invalid JSON in {file_path}: {e}")
-        return None
-
-    # If the JSON is a single object, wrap into list for DataFrame compatibility
-    if isinstance(data, dict):
-        data = [data]
-
-    df = pd.DataFrame(data)
-
-    # Handle euro-format columns: "1.234,56" → 1234.56
-    for col in euro_columns:
-        if col in df:
-            df[col] = (
-                df[col]
-                .astype(str)
-                .str.replace(".", "", regex=False)   # thousands
-                .str.replace(",", ".", regex=False)  # decimal
-                .astype(float)
-            )
-
-    # Cast datatypes if provided
-    for col, dtype in dtypes.items():
-        if col in df:
-            try:
-                df[col] = df[col].astype(dtype)
-            except Exception as e:
-                logger.warning(f"Failed to convert column {col} to {dtype} in {file_path}: {e}")
-
-    return df
 
 
 ###### Airflow things ##########
@@ -346,7 +305,7 @@ def get_latest_endpoint_files(endpoint: str) -> Dict[str, List[Path]]:
         if not date_dirs:
             continue
 
-        latest_date, latest_dir = max(date_dirs, key=lambda t: t[0])
+        _, latest_dir = max(date_dirs, key=lambda t: t[0])
 
         for file_path in latest_dir.iterdir():
             if file_path.is_file():
@@ -406,11 +365,6 @@ def save_combined_parquet(df: pd.DataFrame, date_str: str, outdir: Path, endpoin
     logger.info("Saved combined:", output_file)
     return str(output_file)
 
-
-"""For error handling in debugging, might delete later
-def check_duplicates(df: pd.DataFrame):
-    dups = df.columns[df.columns.duplicated(keep=False)]
-    logger.info("Duplikaattikolumnit:", list(dups))"""
 
 def fill_value_from_parent_row(
     df: pd.DataFrame,
@@ -555,10 +509,6 @@ def combine_sales_data(staged_path: Path,manufacturing_path : Path, mapping: dic
         right_on="OperationManufacturingOrderId",
         how="left"
     )
-
-    # Huom: manufacturing_agg lasketaan jo yllä (rivit ~590-598) täsmälleen
-    # samalla groupby/agg-logiikalla, joten toista, identtistä laskentaa
-    # ei tarvita tässä uudelleen.
 
     manufacturing_full_agg = (
         manufacturing_with_ops
@@ -989,38 +939,6 @@ def combine_purchase_data(staged_path: Path, mapping: dict):
 TIME_DIVISOR = 36_000_000_000
 
 
-def _series_or_zero(df: pd.DataFrame, col: str) -> pd.Series:
-    """Palauttaa sarakkeen Seriesinä tai nollasarjan samalle indeksille."""
-    if col in df.columns:
-        return pd.to_numeric(df[col], errors="coerce").fillna(0)
-    return pd.Series(0, index=df.index, dtype="float64")
-
-
-def _clean_datetime_column(df: pd.DataFrame, col: str) -> pd.DataFrame:
-    """Muuttaa sarakkeen datetimeksi ja poistaa timezone-tiedon Excel-yhteensopivuuden vuoksi."""
-    if col in df.columns:
-        df[col] = pd.to_datetime(df[col], errors="coerce")
-
-        try:
-            if getattr(df[col].dt, "tz", None) is not None:
-                df[col] = df[col].dt.tz_localize(None)
-        except Exception:
-            pass
-
-    return df
-
-def _clean_key_series(series: pd.Series) -> pd.Series:
-    s = series.astype("string").str.strip()
-    s = s.replace({
-        "": np.nan,
-        "nan": np.nan,
-        "None": np.nan,
-        "NULL": np.nan,
-        "null": np.nan
-    })
-    return s
-
-
 @task(trigger_rule=TriggerRule.ALL_SUCCESS)
 def combine_work_interval_data_task(staged_path: str, staged_manufacturing_path : str, mapping: dict):
     return combine_work_interval_data(Path(staged_path),Path(staged_manufacturing_path),mapping)
@@ -1211,7 +1129,7 @@ def process_and_stage_fact_order_rows(combined_sales_path: Path):
 
     try:
         with engine.begin() as conn:
-            save_df(fact_order_rows,"fact_order_rows",conn)
+            save_df(fact_order_rows,"fact_order_rows",conn,conflict_columns=["order_row_id"])
             logger.info("Fact order rows saved!")
     
     except Exception as e:
@@ -1387,7 +1305,7 @@ def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
 
     try:
         with engine.begin() as conn:
-            save_df(fact_workphases,"fact_workphases",conn)
+            save_df(fact_workphases,"fact_workphases",conn,conflict_columns=["workphase_id"])
             logger.info("Fact workphases saved!")
     
     except Exception as e:
@@ -1511,14 +1429,10 @@ def process_and_stage_fact_machine_events(combined_work_interval_path: Path):
         "notes": pd.NA,
     })
     engine = get_engine()
-    
-    """excel_path = append_df_to_excel(
-        fact_machine_events,"fact_machine_events"
-    )"""
 
     try:
         with engine.begin() as conn:
-            save_df(fact_machine_events,"fact_machine_events",conn)
+            save_df(fact_machine_events,"fact_machine_events",conn, conflict_columns=["machine_event_id"])
             logger.info("Fact machine events saved!")
     
     except Exception as e:
@@ -1630,10 +1544,10 @@ def process_dim():
     engine = get_engine()
     try:
         with engine.begin() as conn:
-            save_df(work_centers, "dim_workcenter",conn,clear_before_insert="delete")
-            save_df(parts,"dim_article",conn,clear_before_insert="delete")
-            save_df(customers,"dim_customer",conn,clear_before_insert="delete")
-            save_df(order_types,"dim_order_type",conn,clear_before_insert="delete")
+            save_df(work_centers, "dim_workcenter",conn,conflict_columns=["workcenter_id"])
+            save_df(parts,"dim_article",conn, conflict_columns=["article_id"])
+            save_df(customers,"dim_customer",conn, conflict_columns=["customer_id"])
+            save_df(order_types,"dim_order_type",conn, conflict_columns=["order_type_id"])
     
     except Exception as e:
             logger.error("safe_df epäonnistui: %s", str(e))
@@ -1648,7 +1562,7 @@ def process_erp_files_task(my_files):
             logger.info(file_path)
             process_erp_files(Path(file_path))
 
-@task(retries=3,retry_delay=timedelta(minutes=2))
+"""@task(retries=3,retry_delay=timedelta(minutes=2))
 def get_token_task():
     get_token()
 
@@ -1674,7 +1588,7 @@ def fetch_purchases_task():
 
 @task()
 def fetch_time_recording_task():
-    fetch_time_recording()
+    fetch_time_recording()"""
 
 
 
@@ -1688,14 +1602,14 @@ def fetch_time_recording_task():
 
 def erp_file_processor():
 
-    authenticate = get_token_task()
+    """authenticate = get_token_task()
     
     t_common = fetch_common_task()
     t_inventory = fetch_inventory_task()
     t_manufacturing = fetch_manufacturing_task()
     t_sales = fetch_sales_task()
     t_purchases = fetch_purchases_task()
-    t_time_recordings = fetch_time_recording_task()
+    t_time_recordings = fetch_time_recording_task()"""
     
     manufacturing_files = get_latest_endpoint_files_task("manufacturing")
     common_files = get_latest_endpoint_files_task("common")
@@ -1718,8 +1632,6 @@ def erp_file_processor():
     combined_purchases = combine_purchase_data_task(str(LOCAL_STAGED_PATH / "purchase"), combine_purchase_tables)
     combined_work_intervals = combine_work_interval_data_task(str(LOCAL_STAGED_PATH / "time_recording"),str(LOCAL_STAGED_PATH / "manufacturing"),combine_work_interval_tables)
 
-    truncated_tables = truncate_fact_tables_task(FACT_TABLES)
-
     processed_orders = process_and_stage_fact_order_rows_task(combined_sales)
     processed_workphases = process_and_stage_fact_workphases_task(combined_orders)
 
@@ -1727,14 +1639,14 @@ def erp_file_processor():
 
     processed_machine_events = process_and_stage_fact_machine_events_task(combined_work_intervals)
 
-    authenticate
+    """authenticate
 
     authenticate >> t_manufacturing >> manufacturing_files
     authenticate >> t_common >> common_files
     authenticate >> t_inventory >> inventory_files
     authenticate >> t_sales >> sales_files
     authenticate >> t_purchases >> purchase_files
-    authenticate >> t_time_recordings >> time_recording_files
+    authenticate >> t_time_recordings >> time_recording_files"""
 
     manufacturing_files >> process_manufacturing >> combined_orders #>> combined_reportings
     common_files >> process_common
@@ -1743,7 +1655,7 @@ def erp_file_processor():
     purchase_files >> process_purchases >> combined_purchases
     time_recording_files >> process_time_recordings >> combined_work_intervals
 
-    truncated_tables >> processed_dim
+    #truncated_tables >> processed_dim
     combined_sales >> processed_dim
     combined_orders >> processed_dim
 

@@ -2,7 +2,8 @@ import re
 
 import pandas as pd
 from sqlalchemy.engine import Engine, Connection
-from sqlalchemy import text
+from sqlalchemy import text, func
+from sqlalchemy.dialects.postgresql import insert
 from typing import Literal, Union, List, Optional
 
 
@@ -50,6 +51,32 @@ def truncate_fact_tables(
             f"TRUNCATE TABLE {tables} RESTART IDENTITY"
         )
     )
+def create_postgres_upsert_method(conflict_columns: List[str]):
+    def upsert(table, conn, keys, data_iter):
+        rows = [dict(zip(keys, row)) for row in data_iter]
+
+        if not rows:
+            return
+
+        stmt = insert(table.table).values(rows)
+
+        update_columns = {
+            col: func.coalesce(
+                stmt.excluded[col],
+                table.table.c[col]
+            )
+            for col in keys
+            if col not in conflict_columns
+        }
+
+        stmt = stmt.on_conflict_do_update(
+            index_elements=conflict_columns,
+            set_=update_columns,
+        )
+
+        conn.execute(stmt)
+
+    return upsert
 
 def save_df(
     df: pd.DataFrame,
@@ -57,8 +84,14 @@ def save_df(
     conn: Union[Engine, Connection],
     if_exists: WriteMode = "append",
     clear_before_insert: Optional[IdentifierMode] = None,
-    
+    conflict_columns: Optional[List[str]] = None
 ):
+    method = "multi"
+
+    if conflict_columns:
+        method = create_postgres_upsert_method(
+            conflict_columns=conflict_columns
+        )
 
     if clear_before_insert:
         clear_table(
@@ -74,7 +107,7 @@ def save_df(
                 con=conn,
                 if_exists=if_exists,
                 index=False,
-                method="multi",
+                method=method,
                 chunksize=1000,
             )
     else:
@@ -83,7 +116,7 @@ def save_df(
             con=conn,
             if_exists=if_exists,
             index=False,
-            method="multi",
+            method=method,
             chunksize=1000,
         )
 
