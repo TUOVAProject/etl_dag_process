@@ -2,7 +2,6 @@ from airflow.decorators import dag, task
 from airflow.utils.trigger_rule import TriggerRule
 from datetime import datetime, timedelta
 import logging
-import json
 import pandas as pd
 import numpy as np
 from dateutil.parser import parse
@@ -1447,15 +1446,7 @@ def shape_and_types(
     int_cols: Sequence[str] = (),
     float_cols: Sequence[str] = (),
 ) -> pd.DataFrame:
-    """
-    - Nimeää sarakkeet rename_map:in mukaan (vanha -> uusi).
-    - Luo puuttuvat sarakkeet keep_cols-listasta (täyttää pd.NA:lla).
-    - Rajaa outputin täsmälleen keep_cols-järjestykseen.
-    - Konvertoi dtyperit:
-        * int_cols  -> Pandas Int64 (nullable)
-        * float_cols -> Pandas Float64 (nullable)
-        * kaikki loput (keep_cols - int_cols - float_cols) -> Pandas string + strip
-    """
+   
     out = df.rename(columns=rename_map).copy()
 
     for c in keep_cols:
@@ -1562,7 +1553,7 @@ def process_erp_files_task(my_files):
             logger.info(file_path)
             process_erp_files(Path(file_path))
 
-"""@task(retries=3,retry_delay=timedelta(minutes=2))
+@task(retries=3,retry_delay=timedelta(minutes=2))
 def get_token_task():
     get_token()
 
@@ -1588,7 +1579,7 @@ def fetch_purchases_task():
 
 @task()
 def fetch_time_recording_task():
-    fetch_time_recording()"""
+    fetch_time_recording()
 
 
 
@@ -1602,14 +1593,14 @@ def fetch_time_recording_task():
 
 def erp_file_processor():
 
-    """authenticate = get_token_task()
+    authenticate = get_token_task()
     
     t_common = fetch_common_task()
     t_inventory = fetch_inventory_task()
     t_manufacturing = fetch_manufacturing_task()
     t_sales = fetch_sales_task()
     t_purchases = fetch_purchases_task()
-    t_time_recordings = fetch_time_recording_task()"""
+    t_time_recordings = fetch_time_recording_task()
     
     manufacturing_files = get_latest_endpoint_files_task("manufacturing")
     common_files = get_latest_endpoint_files_task("common")
@@ -1639,14 +1630,14 @@ def erp_file_processor():
 
     processed_machine_events = process_and_stage_fact_machine_events_task(combined_work_intervals)
 
-    """authenticate
+    authenticate
 
     authenticate >> t_manufacturing >> manufacturing_files
     authenticate >> t_common >> common_files
     authenticate >> t_inventory >> inventory_files
     authenticate >> t_sales >> sales_files
     authenticate >> t_purchases >> purchase_files
-    authenticate >> t_time_recordings >> time_recording_files"""
+    authenticate >> t_time_recordings >> time_recording_files
 
     manufacturing_files >> process_manufacturing >> combined_orders #>> combined_reportings
     common_files >> process_common
