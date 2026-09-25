@@ -72,13 +72,14 @@ x-airflow-common:
     PYTHONPATH: '/opt/airflow/src'
   volumes:
     - ./dags:/opt/airflow/dags
+    - ./server_dag:/opt/airflow/dags/server_dag
     - ./logs:/opt/airflow/logs
     - ./config:/opt/airflow/config
     - ./plugins:/opt/airflow/plugins
     - ./src:/opt/airflow/src
-    - ./results/raw:/opt/airflow/results/raw
-    - ./results/staged:/opt/airflow/results/staged
-    - ./results/combined:/opt/airflow/results/combined
+    #- ./results/raw:/opt/airflow/results/raw
+    #- ./results/staged:/opt/airflow/results/staged
+    #- ./results/combined:/opt/airflow/results/combined
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on

@@ -1,0 +1,18 @@
+[project]
+name = "erp_pipeline"
+version = "0.1.0"
+dependencies = [
+    "pandas",
+    "python-dotenv",
+    "Requests",
+    "SQLAlchemy",
+    "pyarrow",
+    "psycopg2-binary",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["erp_pipeline"]

@@ -12,7 +12,6 @@ INPUT_DIRS = [
     "results/raw/manufacturing",
     "results/raw/sales",
     "results/raw/accounting",
-    #"results/raw/purchase",
     "results/raw/time_recording"
 ]
 
@@ -21,9 +20,9 @@ COMBINED_DIRS = [
     "results/combined/reportings",
     "results/combined/manufacturing",
     "results/combined/sales",
-    #"results/combined/purchase",
     "results/combined/materials",
     "results/combined/materials_raw",
+    "results/combined/time_recording"
 ]
 
 RECURSIVE_WITHIN_DATE_FOLDER = False
