@@ -8,18 +8,14 @@ from erp_pipeline.config.erp_config import (
 from erp_pipeline.file_cleaner import clean_parquet_history
 from erp_pipeline.save import save_clean_parquet
 
-STAGED_PATH = Path("/opt/airflow/data/results/staged")
 
 def extract_source_and_endpoint(file_path: Path) -> Tuple[str, str]:
     endpoint = file_path.parent.parent.name
     source_type = file_path.parent.parent.parent.name
     return source_type, endpoint
 
-def process_erp_files(file_path: Path,staged_path: Optional[Path] = None):
+def process_erp_files(file_path: Path,staged_path: Path):
 
-    staged_path = staged_path or STAGED_PATH
-
-    """Process ERP workcenter files."""
     source_type, endpoint = extract_source_and_endpoint(file_path)
 
     df = pd.read_parquet(file_path)

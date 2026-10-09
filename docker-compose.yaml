@@ -73,10 +73,11 @@ x-airflow-common:
   volumes:
     - ./dags:/opt/airflow/dags
     - ./server_dag:/opt/airflow/dags/server_dag
+    - ./server_dag/python-venvs:/opt/airflow/config/python-venvs
     - ./logs:/opt/airflow/logs
-    - ./config:/opt/airflow/config
+    #- ./config:/opt/airflow/config
     - ./plugins:/opt/airflow/plugins
-    - ./src:/opt/airflow/src
+    #- ./src:/opt/airflow/src
     #- ./results/raw:/opt/airflow/results/raw
     #- ./results/staged:/opt/airflow/results/staged
     #- ./results/combined:/opt/airflow/results/combined

@@ -20,6 +20,8 @@ def load_latest(
     mode: LoadMode = LoadMode.STAGED,
     required_cols: Optional[List[str]] = None
 ):
+    print(prefix)
+    print(base)
     patt = re.compile(r"(\d{4}-\d{2}-\d{2})-" + re.escape(prefix) + r"\.parquet$")
     candidates = []
 

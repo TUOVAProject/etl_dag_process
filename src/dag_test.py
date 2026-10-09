@@ -6,8 +6,9 @@ import time
 import re
 import os
 from pathlib import Path
-from dotenv import set_key, dotenv_values
-from src.config.erp_config import (combine_manufacturing_tables,combine_sales_tables,combine_work_interval_tables)
+from dotenv import set_key, dotenv_values, load_dotenv
+from erp_pipeline.config.erp_config import (combine_manufacturing_tables,combine_sales_tables,combine_work_interval_tables)
+from erp_pipeline.config.path_config import LOCAL_BASE_PATH, LOCAL_COMBINED_PATH, LOCAL_STAGED_PATH
 from erp_pipeline.process.process_erp import process_erp_files
 from erp_pipeline.helpers.file_helpers import get_latest_endpoint_files
 from erp_pipeline.combine_data.combine_data_files import combine_manufacturing_data,combine_sales_data,combine_work_interval_data
@@ -22,14 +23,14 @@ from erp_pipeline.auth.auth import login_and_get_token
 
 logger = logging.getLogger("custom_logger")
 
-LOCAL_BASE_PATH = "results/raw"
-LOCAL_STAGED_PATH = Path("results/staged")
-LOCAL_COMBINED_PATH = Path("results/combined")
-OUTPUT_EXCEL_FOLDER = Path("/home/sasu/TUOVA/excel_tietomalli")
+DEVENV_PATH = Path(__file__).parent / "dev.env"
+load_dotenv(DEVENV_PATH)
+OUTPUT_EXCEL_FOLDER = Path(
+    os.getenv("OUTPUT_EXCEL_FOLDER", "./excel_datamodel")
+)
 OUTPUT_EXCEL_FOLDER.mkdir(parents=True, exist_ok=True)
-DEVENV_PATH = str(Path(__file__).parent / "dev.env")
 DATE_STR = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-EXCEL_PATH = OUTPUT_EXCEL_FOLDER / f"tietomalli_{DATE_STR}.xlsx"
+EXCEL_PATH = OUTPUT_EXCEL_FOLDER / f"datamodel_{DATE_STR}.xlsx"
 CACHE_PATH = Path(os.getenv("TOKEN_CACHE_PATH", Path.home() / ".erp_pipeline_token.json"))
 
 _sheets_to_write: "dict[str, pd.DataFrame]" = {}

@@ -10,125 +10,13 @@ import time
 import logging
 logger = logging.getLogger("airflow.task")
 
-combine_sales_tables = {
-    "CustomerOrderRows" : ["Id","PartId","DeliveredQuantity","DeliveryDate","DesiredDeliveryDate","LinkedManufacturingOrderId","InitialDeliveryDate","OrderDate","OrderedQuantity","OrderRowType",
-                                     "ParentOrderId","ParentRowId","Price","PriceInCompanyCurrency","RevisionId","NewFinishDate","UnitId","PartStatus","Status"],
-    "CustomerOrders" : ["Id","CustomerId","InvoiceCustomerId","OrderDate","OrderNumber","OrderTypeId","Status","SellerId"],
-    "Customers" : ["Id","Name","Code","AlternativeName"],
-    "InvoiceLogs" : ["Id","CustomerOrderId","InvoicedQuantity","Price","LoggingTimestamp","InvoiceDate"],
-    "ManufacturingOrders" : ["Id","OrderNumber","StartDate","InitialFinishDate","FinishDate","CustomerOrderId","Status"],
-    "ManufacturingOrderOperations" : ["Id","ManufacturingOrderId","ActualStartDate","ActualFinishDate"],
-}
 
-combine_manufacturing_tables = {
-    "ManufacturingOrders" : ["Id","OrderNumber","OrderTypeId","CustomerOrderId","CustomerId","InitialFinishDate","Status","PartId","ReportedQuantity","PlannedQuantity",],
-    "ManufacturingOrderOperations" : ["Id","WorkCenterId","PartId",
-        "PlannedQuantity","ReportedQuantity","RejectedQuantity","RestQuantity",
-        "ReportedUnitTime","PlannedUnitTime","ReportedSetupTime","PlannedSetupTime",
-        "ManufacturingOrderId","OperationNumber","OperationRowId","PlannedStartDate","ActualStartDate",
-        "PlannedFinishDate","ActualFinishDate","WorkshopOperationStatus","Description","FixedLeadTime"],
-    "OperationRows" : ["Id","OrderOperation","UnitTime","IsSubcontractor","UnitCost","SetupCost","FixedLeadTime"],
-    "ExtraFieldGroups" : ["Id","Name","RowNumber"],
-    "ExtraFieldOptionTemplates" : ["Id","Code","Description","ExtraFieldTemplateId"],
-    "ExtraFields" : ["Id","ParentId","ParentClass","SelectedOptionId","SelectedOptionIds"],
-    "ExtraFieldTemplates" : ["Id","Name","ParentId","RowNumber"],
-    "WorkCenters" : ["Id","Number"],
-    "CustomerOrderRows" : ["Id","LinkedManufacturingOrderId"],
-}
-
-combine_reporting_tables = {
-    "ManufacturingOrders" : ["Id","OrderNumber","OrderTypeId","CustomerOrderId","CustomerId","InitialFinishDate","Status","PartId",],
-    "ManufacturingOrderOperationReportings" : ["Id","OperationId","Quantity","SetupTime","UnitTime","WarehouseId","EmployeeId","ActualReportedDate",
-        "PreviousRestQuantity","RestQuantity","MainPartId","UnitCost","SetupCost","Type","ReportingTimestamp","CommentId","SetupCostFactor1",
-        "SetupCostFactor2","SetupCostFactor3","UnitCostFactor1","UnitCostFactor2","UnitCostFactor3"],
-    "ManufacturingOrderOperations" : ["Id","WorkCenterId",
-    "PlannedQuantity","ReportedQuantity","RejectedQuantity",
-    "ReportedUnitTime","PlannedUnitTime","ReportedSetupTime","PlannedSetupTime",
-    "ManufacturingOrderId","OperationNumber","OperationRowId","PlannedStartDate","ActualStartDate",
-    "PlannedFinishDate","ActualFinishDate","WorkshopOperationStatus","Description"],
-    "ExtraFieldGroups" : [
-        "Id","Name","RowNumber"
-    ],
-    "ExtraFieldOptionTemplates" : [
-        "Id","Code","Description","ExtraFieldTemplateId"
-    ],
-    "ExtraFields" : [
-        "Id","ParentId","ParentClass","SelectedOptionId","SelectedOptionIds"
-    ],
-    "ExtraFieldTemplates" : [
-        "Id","Name","ParentId","RowNumber"
-    ],
-    "Customers" : ["Id","Code"],
-}
-
-combine_inventory_tables = {
-    "PartCodes" : ["Id","Alias","Code","Description"],
-    "Parts" : ["Id","PartNumber","Description","ActiveRevisionId","Alias","AveragePrice","CompanyId","PartCodeId","StandardPrice","ExtraDescription"]
-}
-
-combine_purchase_tables = {
-     "PurchaseOrders" : [
-            "Id","WarehouseId","ProjectId","OrderAmount","OrderAmountInCompanyCurrency","IsStockOrder","IsConfirmed",
-            "CustomerOrderId","OrderNumber","OrderDate", "Rows","Status","OrderTypeId","CategoryString",
-            ],
-        "PurchaseOrderRows" : [
-            "Id","OrderRowType","PartId","ParentRowId","DeliveryDate","OrderedQuantity","Price","Discount","WarehouseId","OrderDate",
-            "StandardPrice","SetupPrice","RestQuantity","DeliveredQuantity",
-            "IsConfirmed","LinkedSubcontractingManufacturingOrderOperation",
-            "SubPartParentRowId","ParentOrderId","PriceOrigin","OrderQuantityId","OrderQuantity",
-            ],
-}
-
-combine_material_tables = {
-    "InvoiceLogs": [
-        "Id","PartId","CustomerCode",
-        "InvoicedQuantity","Price","SetupPrice","Discount","ExchangeRate",
-        "OrderRowType","ConversionFactor","DeliveryRowId",
-        "StandardPrice","FifoPrice","InvoiceDate"
-    ],
-    "Parts": [
-        "Id","PartNumber","Description","StandardPrice","Type"
-    ],
-    "Customers": [
-        "Id","Code","Name"
-    ],
-    "ExtraFieldGroups" : [
-        "Id","Name","RowNumber"
-    ],
-    "ExtraFieldOptionTemplates" : [
-        "Id","Code","Description","ExtraFieldTemplateId"
-    ],
-    "ExtraFields" : [
-        "Id","ParentId","ParentClass","SelectedOptionId","SelectedOptionIds"
-    ],
-    "ExtraFieldTemplates" : [
-        "Id","Name","ParentId","RowNumber"
-    ],
-    "CustomerOrderInvoiceRows" : [
-        "Id","OverrideStandardPrice","StandardPrice"
-    ],
-    "CustomerOrderDeliveryRows" : [
-        "Id","InvoiceRowId","CustomerOrderRowId"
-    ],
-    "CustomerOrderRows" : [
-        "Id","Price","StandardPrice"
-    ],
-}
-
-combine_work_interval_tables = {
-    "ManufacturingOrders" : ["Id","OrderNumber","PartId"],
-    "ManufacturingOrderOperations" : ["Id","OrderNumber","ManufacturingOrderId","WorkCenterId","PartId"],
-    "WorkIntervals" : ["Id","OperationId","ReportingEmployeeId","IntervalStart","IntervalEnd","WorkedTime","ReportedQuantity","RejectedQuantity"],
-}
-
-RAW_PATH = Path("/opt/airflow/results/raw")
-STAGED_PATH = Path("/opt/airflow/results/staged")
-COMBINED_PATH = Path("/opt/airflow/results/combined")
 VARIABLE_KEY = "erp_auth_token"
 LOG_FILE = Path(__file__).resolve().parent / "app.log"
 
 PYTHON_VENV_PATH = "/opt/airflow/config/python-venvs/erp_pipeline/.venv/bin/python"
 ENV_PATH = "/opt/airflow/config/python-venvs/erp_pipeline/.env"
+
 default_args = {
     "owner": "airflow",
     "retries": 1,
@@ -200,8 +88,8 @@ def get_latest_endpoint_files_task(endpoint : str, env_path=None):
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=env_path)
     from erp_pipeline.helpers.file_helpers import get_latest_endpoint_files
-
-    raw = get_latest_endpoint_files(endpoint)
+    from erp_pipeline.config.path_config import RAW_PATH
+    raw = get_latest_endpoint_files(endpoint,RAW_PATH)
     return {ep: [str(p) for p in paths] for ep, paths in raw.items()}
 
 @task.external_python(python=PYTHON_VENV_PATH, task_id="process_erp_files", trigger_rule=TriggerRule.ALL_SUCCESS)
@@ -210,71 +98,80 @@ def process_erp_files_task(my_files,env_path=None):
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=env_path)
     from erp_pipeline.process.process_erp import process_erp_files
+    from erp_pipeline.config.path_config import STAGED_PATH
     print("Processing files")
 
     for _, files in my_files.items():
         for file_path in files:
             print(file_path)
-            process_erp_files(Path(file_path))
+            process_erp_files(Path(file_path), STAGED_PATH)
 
 @task.external_python(python=PYTHON_VENV_PATH, task_id="combine_sales_data",trigger_rule=TriggerRule.ALL_SUCCESS)
-def combine_sales_data_task(staged_path: str, manufacturing_path: str, mapping: dict,env_path=None):
-    from pathlib import Path
+def combine_sales_data_task(env_path=None):
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=env_path)
+    from erp_pipeline.config.erp_config import combine_sales_tables
     from erp_pipeline.combine_data.combine_data_files import combine_sales_data
+    from erp_pipeline.config.path_config import COMBINED_PATH,STAGED_PATH
 
-    return combine_sales_data(Path(staged_path),Path(manufacturing_path),mapping)
+    return combine_sales_data(STAGED_PATH / "sales",STAGED_PATH / "manufacturing",combine_sales_tables,COMBINED_PATH)
 
 
 @task.external_python(python=PYTHON_VENV_PATH, task_id="combine_material_data",trigger_rule=TriggerRule.ALL_SUCCESS)
-def combine_material_data_task(combined_sales_path:str,staged_path: str, mapping: dict,env_path=None):
+def combine_material_data_task(combined_sales_path:str,staged_path: str, env_path=None):
     from pathlib import Path
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=env_path)
+    from erp_pipeline.config.erp_config import combine_material_tables
     from erp_pipeline.combine_data.combine_data_files import combine_material_data
+    from erp_pipeline.config.path_config import COMBINED_PATH
 
-    return combine_material_data(Path(combined_sales_path),Path(staged_path),mapping)
+    return combine_material_data(Path(combined_sales_path),Path(staged_path),combine_material_tables,COMBINED_PATH)
 
 
 @task.external_python(python=PYTHON_VENV_PATH, task_id="combine_inventory_data",trigger_rule=TriggerRule.ALL_SUCCESS)
-def combine_inventory_data_task(staged_path: str, mapping: dict,env_path=None):
-    from pathlib import Path
+def combine_inventory_data_task(staged_path: str, env_path=None):
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=env_path)
+    from erp_pipeline.config.erp_config import combine_inventory_tables
     from erp_pipeline.combine_data.combine_data_files import combine_inventory_data
+    from erp_pipeline.config.path_config import COMBINED_PATH, STAGED_PATH
 
-    return combine_inventory_data(Path(staged_path),mapping)
+    return combine_inventory_data(STAGED_PATH / "inventory",combine_inventory_tables,COMBINED_PATH)
 
 
 @task.external_python(python=PYTHON_VENV_PATH, task_id="combine_manufacturing_data",trigger_rule=TriggerRule.ALL_SUCCESS)
-def combine_manufacturing_data_task(staged_manufacturing_path: str,staged_commmon_path : str,staged_sales_path:str, mapping: dict,env_path=None):
-    from pathlib import Path
+def combine_manufacturing_data_task(env_path=None):
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=env_path)
+    from erp_pipeline.config.erp_config import combine_manufacturing_tables
     from erp_pipeline.combine_data.combine_data_files import combine_manufacturing_data
+    from erp_pipeline.config.path_config import COMBINED_PATH,STAGED_PATH
 
-    return combine_manufacturing_data(Path(staged_manufacturing_path),Path(staged_commmon_path),Path(staged_sales_path), mapping)
+    return combine_manufacturing_data(STAGED_PATH / "manufacturing",STAGED_PATH / "common",STAGED_PATH / "sales", combine_manufacturing_tables,COMBINED_PATH)
 
 
 @task.external_python(python=PYTHON_VENV_PATH, task_id="combine_purchase_data",trigger_rule=TriggerRule.ALL_SUCCESS)
-def combine_purchase_data_task(staged_path: str, mapping: dict,env_path=None):
+def combine_purchase_data_task(staged_path: str, env_path=None):
     from pathlib import Path
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=env_path)
+    from erp_pipeline.config.erp_config import combine_purchase_tables
     from erp_pipeline.combine_data.combine_data_files import combine_purchase_data
+    from erp_pipeline.config.path_config import COMBINED_PATH
 
-    return combine_purchase_data(Path(staged_path),mapping)
+    return combine_purchase_data(Path(staged_path),combine_purchase_tables,COMBINED_PATH)
 
 
 @task.external_python(python=PYTHON_VENV_PATH, task_id="combine_work_interval_data",trigger_rule=TriggerRule.ALL_SUCCESS)
-def combine_work_interval_data_task(staged_path: str, staged_manufacturing_path : str, mapping: dict,env_path=None):
-    from pathlib import Path
+def combine_work_interval_data_task(env_path=None):
     from dotenv import load_dotenv
     load_dotenv(dotenv_path=env_path)
+    from erp_pipeline.config.erp_config import combine_work_interval_tables
     from erp_pipeline.combine_data.combine_data_files import combine_work_interval_data
+    from erp_pipeline.config.path_config import COMBINED_PATH,STAGED_PATH
 
-    return combine_work_interval_data(Path(staged_path),Path(staged_manufacturing_path),mapping)
+    return combine_work_interval_data(STAGED_PATH / "time_recording",STAGED_PATH / "manufacturing",combine_work_interval_tables,COMBINED_PATH)
 
 
 @task.external_python(python=PYTHON_VENV_PATH, task_id="process_and_stage_fact_order_rows",trigger_rule=TriggerRule.ALL_SUCCESS)
@@ -362,10 +259,10 @@ def server_erp_file_processor():
     process_time_recordings = process_erp_files_task(time_recording_files,ENV_PATH)
     
 
-    combined_orders = combine_manufacturing_data_task(str(STAGED_PATH / "manufacturing"),str(STAGED_PATH / "common"),str(STAGED_PATH / "sales"), combine_manufacturing_tables,ENV_PATH)
-    combined_sales = combine_sales_data_task(str(STAGED_PATH / "sales"),str(STAGED_PATH / "manufacturing"), combine_sales_tables,ENV_PATH)
-    combined_inventory = combine_inventory_data_task(str(STAGED_PATH / "inventory"), combine_inventory_tables,ENV_PATH)
-    combined_work_intervals = combine_work_interval_data_task(str(STAGED_PATH / "time_recording"),str(STAGED_PATH / "manufacturing"),combine_work_interval_tables,ENV_PATH)
+    combined_orders = combine_manufacturing_data_task(ENV_PATH)
+    combined_sales = combine_sales_data_task(ENV_PATH)
+    combined_inventory = combine_inventory_data_task(ENV_PATH)
+    combined_work_intervals = combine_work_interval_data_task(ENV_PATH)
 
     processed_orders = process_and_stage_fact_order_rows_task(combined_sales,ENV_PATH)
     save_or_raise_task(processed_orders,"fact_order_rows",["order_row_id"])

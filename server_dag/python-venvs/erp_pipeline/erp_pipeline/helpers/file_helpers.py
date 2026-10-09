@@ -6,12 +6,11 @@ from pathlib import Path
 from collections import defaultdict
 from typing import Dict, List
 
-RAW_PATH = Path("/opt/airflow/data/results/raw")
 DATE_FMT = "%Y-%m-%d"
 
-def get_latest_endpoint_files(endpoint: str) -> Dict[str, List[Path]]:
+def get_latest_endpoint_files(endpoint: str,rawpath: Path) -> Dict[str, List[Path]]:
     
-    dir = Path(RAW_PATH) / endpoint
+    dir = Path(rawpath) / endpoint
     if not dir.is_dir():
         return {}
 

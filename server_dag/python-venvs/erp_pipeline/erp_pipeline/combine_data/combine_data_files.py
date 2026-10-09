@@ -7,13 +7,9 @@ from erp_pipeline.process.dataset_specific import resolve_part_extrafields_by_gr
 from erp_pipeline.save import save_combined_parquet
 from erp_pipeline.file_cleaner import clean_parquet_history
 from pathlib import Path
-from typing import Optional
 
-COMBINED_PATH = Path("/opt/airflow/results/combined")
 
-def combine_manufacturing_data(staged_manufacturing_path: Path, staged_common_path: Path, staged_sales_path: Path, mapping: dict, combined_path: Optional[Path] = None):
-
-    combined_path = combined_path or COMBINED_PATH
+def combine_manufacturing_data(staged_manufacturing_path: Path, staged_common_path: Path, staged_sales_path: Path, mapping: dict, combined_path: Path ):
 
     _, manufacturing_orders = load_latest(
         staged_manufacturing_path, "ManufacturingOrders", LoadMode.STAGED, mapping["ManufacturingOrders"]
@@ -183,9 +179,8 @@ def combine_manufacturing_data(staged_manufacturing_path: Path, staged_common_pa
 
     return saved_parquet
 
-def combine_sales_data(staged_path: Path,manufacturing_path : Path, mapping: dict, combined_path: Optional[Path] = None):
+def combine_sales_data(staged_path: Path,manufacturing_path : Path, mapping: dict, combined_path: Path):
 
-    combined_path = combined_path or COMBINED_PATH
     date_rows, rows = load_latest(staged_path, "CustomerOrderRows",LoadMode.STAGED, mapping["CustomerOrderRows"])
     date_orders, orders = load_latest(staged_path, "CustomerOrders",LoadMode.STAGED, mapping["CustomerOrders"])
     date_customers, customers = load_latest(staged_path, "Customers",LoadMode.STAGED, mapping["Customers"])
@@ -338,10 +333,9 @@ def combine_sales_data(staged_path: Path,manufacturing_path : Path, mapping: dic
     clean_parquet_history(endpoint, combined_path / endpoint, days_to_keep=2)
     return saved_parquet
 
-def combine_inventory_data(staged_path: Path, mapping: dict,combined_path: Optional[Path] = None):
+def combine_inventory_data(staged_path: Path, mapping: dict, combined_path: Path):
 
-    combined_path = combined_path or COMBINED_PATH
-
+  
     date_codes, part_codes = load_latest(staged_path, "PartCodes",LoadMode.STAGED, mapping["PartCodes"])
     date_parts, parts = load_latest(staged_path, "Parts",LoadMode.STAGED, mapping["Parts"])
 
@@ -368,9 +362,7 @@ def combine_inventory_data(staged_path: Path, mapping: dict,combined_path: Optio
 def combine_work_interval_data(
         staged_work_interval_path: Path,
         staged_manufacturing_path: Path,
-        mapping: dict,combined_path: Optional[Path] = None):
-
-    combined_path = combined_path or COMBINED_PATH
+        mapping: dict,combined_path: Path):
 
     _, manufacturing_orders = load_latest(
             staged_manufacturing_path,
@@ -436,9 +428,7 @@ def combine_work_interval_data(
     
     return saved_parquet
 
-def combine_material_data(combined_sales_path: Path,staged_path: Path, mapping: dict,combined_path: Optional[Path] = None):
-
-    combined_path = combined_path or COMBINED_PATH
+def combine_material_data(combined_sales_path: Path,staged_path: Path, mapping: dict,combined_path: Path):
     
     combined_sales = pd.read_parquet(combined_sales_path)
     date_materials, materials = load_latest(staged_path, "StockTransactions",LoadMode.STAGED, mapping["StockTransactions"])
@@ -460,9 +450,7 @@ def combine_material_data(combined_sales_path: Path,staged_path: Path, mapping: 
     return saved_parquet
 
 
-def combine_purchase_data(staged_path: Path, mapping: dict,combined_path: Optional[Path] = None):
-
-    combined_path = combined_path or COMBINED_PATH
+def combine_purchase_data(staged_path: Path, mapping: dict,combined_path: Path):
 
     _, purchase_orders = load_latest(
         staged_path,
