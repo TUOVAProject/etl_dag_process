@@ -36,8 +36,8 @@ Dataabase server and database. Database creation script can be found from here: 
 
 ### General
 
-When dag is deployed and enabled, data is fetched once a day and is separated to three stages: raw, staged, combined. 
-The data of the last two days is saved for each raw,staged and combined. The data is stored on docker under results-folder:
+When dag is deployed and enabled, data is fetched once a day and is separated to three stages: raw, staged and combined. 
+The data of the last two days is saved for each raw, staged and combined. The data is stored on docker under results-folder:
 ```
 results/
 ├── combined/
@@ -105,6 +105,7 @@ project/
 ```
 
 #### Notice that the local dag_test.py file uses dev.env-file. The .env and dev.env file must have these variables:
+```
 BASE_URL,
 LOGIN_URL,
 COMMON_URL,
@@ -122,11 +123,11 @@ DB_NAME,
 DB_USER,
 DB_PASSWORD,
 OUTPUT_EXCEL //dev.env only
-
+```
 Virtual environment copy command for local developing:
 pip install -e "server_dag/python-venvs/erp_pipeline/"
 
-Src-folder contains testing for local environment and it doesn't ue airflow at all. Data won't be saved to database, it will be saved as excel.
+src-folder contains testing for local environment and it doesn't ue airflow at all. Data won't be saved to database, it will be saved as excel.
 
 The DAG uses Airflow's `ExternalPythonOperator` running in a virtual environment to keep project dependencies from interfering with Airflow's own dependencies (as well as any other projects'). The DAG file authenticates to api using credentials defined in the .env file and creates and stores the access token to Airflow's variables
 
