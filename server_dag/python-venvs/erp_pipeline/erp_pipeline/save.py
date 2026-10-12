@@ -6,6 +6,7 @@ from datetime import datetime
 STAGED_PATH = Path("/opt/airflow/data/results/staged")
 
 def save_combined_parquet(df: pd.DataFrame, date_str: str, outdir: Path, endpoint :str):
+    print(f"Saving combined: {endpoint}")
     outdir.mkdir(parents=True, exist_ok=True)
     file_name = f"Combined{endpoint.capitalize()}.parquet"
     output_file = outdir / f"{date_str}-{file_name}"
@@ -15,6 +16,7 @@ def save_combined_parquet(df: pd.DataFrame, date_str: str, outdir: Path, endpoin
 
 
 def save_clean_parquet(endpoint: str, df: pd.DataFrame, base_path: Path):
+    print(f"Saving parquet {endpoint}")
     endpoint_name = endpoint.lstrip("/").replace("/", "-") or "root"
 
     base_path.mkdir(parents=True, exist_ok=True)
@@ -25,5 +27,5 @@ def save_clean_parquet(endpoint: str, df: pd.DataFrame, base_path: Path):
 
     df.to_parquet(full_path,index=False)
 
-    print(f"Saved cleaned data: {full_path}")
+    print(f"Saved cleaned parquet: {full_path}")
     return full_path

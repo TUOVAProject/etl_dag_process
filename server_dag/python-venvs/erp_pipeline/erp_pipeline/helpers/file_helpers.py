@@ -9,7 +9,7 @@ from typing import Dict, List
 DATE_FMT = "%Y-%m-%d"
 
 def get_latest_endpoint_files(endpoint: str,rawpath: Path) -> Dict[str, List[Path]]:
-    
+    print(f"Loading latest endpoint files {rawpath}")
     dir = Path(rawpath) / endpoint
     if not dir.is_dir():
         return {}

@@ -15,7 +15,7 @@ def extract_source_and_endpoint(file_path: Path) -> Tuple[str, str]:
     return source_type, endpoint
 
 def process_erp_files(file_path: Path,staged_path: Path):
-
+    print(f"Processing endpoint files {file_path}")
     source_type, endpoint = extract_source_and_endpoint(file_path)
 
     df = pd.read_parquet(file_path)
@@ -28,7 +28,6 @@ def process_erp_files(file_path: Path,staged_path: Path):
         )
 
     df = df[[c for c in columns if c in df.columns]]
-    print("Saveing parquet : ", staged_path/ source_type)
     saved_parquet = save_clean_parquet(endpoint, df, staged_path / source_type)
     clean_parquet_history(endpoint, staged_path / source_type, days_to_keep=2)
     return saved_parquet

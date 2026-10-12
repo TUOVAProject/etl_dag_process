@@ -10,7 +10,7 @@ from pathlib import Path
 
 
 def combine_manufacturing_data(staged_manufacturing_path: Path, staged_common_path: Path, staged_sales_path: Path, mapping: dict, combined_path: Path ):
-
+    print("Combinining manufacturing data")
     _, manufacturing_orders = load_latest(
         staged_manufacturing_path, "ManufacturingOrders", LoadMode.STAGED, mapping["ManufacturingOrders"]
     )
@@ -174,13 +174,12 @@ def combine_manufacturing_data(staged_manufacturing_path: Path, staged_common_pa
         endpoint
     )
 
-    clean_parquet_history(endpoint, combined_path / endpoint, days_to_keep=2)
-
-
+    clean_parquet_history(f"Combined{endpoint.capitalize()}", combined_path / endpoint, days_to_keep=2)
+    
     return saved_parquet
 
 def combine_sales_data(staged_path: Path,manufacturing_path : Path, mapping: dict, combined_path: Path):
-
+    print("Combinining sales data")
     date_rows, rows = load_latest(staged_path, "CustomerOrderRows",LoadMode.STAGED, mapping["CustomerOrderRows"])
     date_orders, orders = load_latest(staged_path, "CustomerOrders",LoadMode.STAGED, mapping["CustomerOrders"])
     date_customers, customers = load_latest(staged_path, "Customers",LoadMode.STAGED, mapping["Customers"])
@@ -330,12 +329,12 @@ def combine_sales_data(staged_path: Path,manufacturing_path : Path, mapping: dic
     date_str = datetime.now().strftime("%Y-%m-%d")
     endpoint = "sales"
     saved_parquet =  save_combined_parquet(merged,date_str,combined_path / endpoint,endpoint)
-    clean_parquet_history(endpoint, combined_path / endpoint, days_to_keep=2)
+    clean_parquet_history(f"Combined{endpoint.capitalize()}", combined_path / endpoint, days_to_keep=2)
     return saved_parquet
 
 def combine_inventory_data(staged_path: Path, mapping: dict, combined_path: Path):
 
-  
+    print("Combinining inventory data")
     date_codes, part_codes = load_latest(staged_path, "PartCodes",LoadMode.STAGED, mapping["PartCodes"])
     date_parts, parts = load_latest(staged_path, "Parts",LoadMode.STAGED, mapping["Parts"])
 
@@ -356,14 +355,14 @@ def combine_inventory_data(staged_path: Path, mapping: dict, combined_path: Path
     endpoint = "inventory"
 
     saved_parquet =  save_combined_parquet(merged,date_str,combined_path / endpoint,endpoint)
-    clean_parquet_history(endpoint, combined_path / endpoint, days_to_keep=2)
+    clean_parquet_history(f"Combined{endpoint.capitalize()}", combined_path / endpoint, days_to_keep=2)
     return saved_parquet
 
 def combine_work_interval_data(
         staged_work_interval_path: Path,
         staged_manufacturing_path: Path,
         mapping: dict,combined_path: Path):
-
+    print("Combinining work interval data")
     _, manufacturing_orders = load_latest(
             staged_manufacturing_path,
             "ManufacturingOrders",
@@ -423,13 +422,13 @@ def combine_work_interval_data(
         endpoint
     )
     
-    clean_parquet_history(endpoint, combined_path / endpoint, days_to_keep=2)
+    clean_parquet_history(f"Combined{endpoint.capitalize()}", combined_path / endpoint, days_to_keep=2)
     
     
     return saved_parquet
 
 def combine_material_data(combined_sales_path: Path,staged_path: Path, mapping: dict,combined_path: Path):
-    
+    print("Combinining material data")
     combined_sales = pd.read_parquet(combined_sales_path)
     date_materials, materials = load_latest(staged_path, "StockTransactions",LoadMode.STAGED, mapping["StockTransactions"])
 
@@ -446,12 +445,12 @@ def combine_material_data(combined_sales_path: Path,staged_path: Path, mapping: 
     date_str = datetime.now().strftime("%Y-%m-%d")
     endpoint = "sales"
     saved_parquet =  save_combined_parquet(merged,date_str,combined_path / endpoint,endpoint)
-    clean_parquet_history(endpoint, combined_path / endpoint, days_to_keep=2)
+    clean_parquet_history(f"Combined{endpoint.capitalize()}", combined_path / endpoint, days_to_keep=2)
     return saved_parquet
 
 
 def combine_purchase_data(staged_path: Path, mapping: dict,combined_path: Path):
-
+    print("Combinining purchase data")
     _, purchase_orders = load_latest(
         staged_path,
         "PurchaseOrders",
@@ -499,6 +498,6 @@ def combine_purchase_data(staged_path: Path, mapping: dict,combined_path: Path):
         endpoint
     )
 
-    clean_parquet_history(endpoint, combined_path / endpoint, days_to_keep=7)
+    clean_parquet_history(f"Combined{endpoint.capitalize()}", combined_path / endpoint, days_to_keep=2)
 
     return saved

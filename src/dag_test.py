@@ -8,7 +8,7 @@ import os
 from pathlib import Path
 from dotenv import set_key, dotenv_values, load_dotenv
 from erp_pipeline.config.erp_config import (combine_manufacturing_tables,combine_sales_tables,combine_work_interval_tables)
-from erp_pipeline.config.path_config import LOCAL_BASE_PATH, LOCAL_COMBINED_PATH, LOCAL_STAGED_PATH
+from erp_pipeline.config.path_config import LOCAL_RAW_PATH_STR,LOCAL_RAW_PATH, LOCAL_COMBINED_PATH, LOCAL_STAGED_PATH
 from erp_pipeline.process.process_erp import process_erp_files
 from erp_pipeline.helpers.file_helpers import get_latest_endpoint_files
 from erp_pipeline.combine_data.combine_data_files import combine_manufacturing_data,combine_sales_data,combine_work_interval_data
@@ -56,7 +56,7 @@ def save_token_if_new(token_or_dict):
     return token_or_dict
 
 def append_df_to_excel(df: pd.DataFrame, sheet_name: str):
-    logger.info("Queuing sheet for excel: " + sheet_name)
+    print("Queuing sheet for excel: " + sheet_name)
     df = clean_dataframe_for_excel(df)
     df = convert_large_ints_to_str(df)
     _sheets_to_write[sheet_name[:31]] = df
@@ -69,10 +69,10 @@ def flush_excel():
     taulut on käsitelty (esim. erp_file_processor_test()-funktion lopussa).
     """
     if not _sheets_to_write:
-        logger.info("Ei kirjoitettavia sheettejä, ohitetaan Excel-tallennus.")
+        print("Ei kirjoitettavia sheettejä, ohitetaan Excel-tallennus.")
         return
 
-    logger.info(f"Kirjoitetaan {len(_sheets_to_write)} sheettiä tiedostoon: {EXCEL_PATH}")
+    print(f"Kirjoitetaan {len(_sheets_to_write)} sheettiä tiedostoon: {EXCEL_PATH}")
     with pd.ExcelWriter(
         EXCEL_PATH,
         engine="openpyxl",
@@ -84,7 +84,7 @@ def flush_excel():
                 sheet_name=sheet_name,
                 index=False
             )
-    logger.info(f"Excel-tallennus valmis: {EXCEL_PATH}")
+    print(f"Excel-tallennus valmis: {EXCEL_PATH}")
 
 _ILLEGAL_EXCEL_CHARS_RE = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
 
@@ -147,48 +147,47 @@ def erp_file_processor_test():
 
 
     cached_token = get_cached_token_or_none()
-    fresh_result = login_and_get_token(values.get("LOGIN_URL"))
-    authenticate = save_token_if_new(fresh_result)
+    if(cached_token):
+        authenticate = cached_token
+    else:
+        fresh_result = login_and_get_token(values.get("LOGIN_URL"))
+        authenticate = save_token_if_new(fresh_result)
         
-    fetch_common(authenticate,values.get("COMMON_URL"),LOCAL_BASE_PATH + "/common")
-    fetch_inventory(authenticate,values.get("INVENTORY_URL"),LOCAL_BASE_PATH + "/inventory")
-    fetch_manufacturing(authenticate,values.get("MANUFACTURING_URL"),LOCAL_BASE_PATH + "/manufacturing")
-    fetch_sales(authenticate,values.get("SALES_URL"),LOCAL_BASE_PATH + "/sales")
-    fetch_time_recording(authenticate,values.get("TIMERECORDING_URL"),LOCAL_BASE_PATH + "/timerecording")
+    fetch_common(authenticate,values.get("COMMON_URL"),LOCAL_RAW_PATH_STR + "/common")
+    fetch_inventory(authenticate,values.get("INVENTORY_URL"),LOCAL_RAW_PATH_STR + "/inventory")
+    fetch_manufacturing(authenticate,values.get("MANUFACTURING_URL"),LOCAL_RAW_PATH_STR + "/manufacturing")
+    fetch_sales(authenticate,values.get("SALES_URL"),LOCAL_RAW_PATH_STR + "/sales")
+    fetch_time_recording(authenticate,values.get("TIMERECORDING_URL"),LOCAL_RAW_PATH_STR + "/timerecording")
 
-    manufacturing_files = get_latest_endpoint_files("manufacturing")
-    for endpoint, files in manufacturing_files.items():
-        for file_path in files:
-            process_erp_files(Path(file_path),staged_path=LOCAL_STAGED_PATH)
-    common_files = get_latest_endpoint_files("common")
+categories = [
+    "manufacturing",
+    "common",
+    "inventory",
+    "sales",
+    "time_recording",
+]
 
-    for endpoint, files in common_files.items():
-        for file_path in files:
-            process_erp_files(Path(file_path,staged_path=LOCAL_STAGED_PATH))
+for category in categories:
+    endpoint_files = get_latest_endpoint_files(
+        category,
+        LOCAL_RAW_PATH
+    )
 
-    inventory_files = get_latest_endpoint_files("inventory")
-    for endpoint, files in inventory_files.items():
+    for files in endpoint_files.values():
         for file_path in files:
-            process_erp_files(Path(file_path),staged_path=LOCAL_STAGED_PATH)
-
-    sales_files = get_latest_endpoint_files("sales")
-    for endpoint, files in sales_files.items():
-        for file_path in files:
-            process_erp_files(Path(file_path),staged_path=LOCAL_STAGED_PATH)
-
-    time_recording_files = get_latest_endpoint_files("time_recording")
-    for endpoint, files in time_recording_files.items():
-        for file_path in files:
-            process_erp_files(Path(file_path),staged_path=LOCAL_STAGED_PATH)
+            process_erp_files(
+                Path(file_path),
+                staged_path=LOCAL_STAGED_PATH
+            )
     
     
         
-    combined_manufacturing = combine_manufacturing_data(LOCAL_STAGED_PATH / "manufacturing",LOCAL_STAGED_PATH / "common",LOCAL_STAGED_PATH / "sales", combine_manufacturing_tables,combined_path=Path(LOCAL_COMBINED_PATH) )
-    combined_sales = combine_sales_data(LOCAL_STAGED_PATH / "sales",LOCAL_STAGED_PATH /"manufacturing", combine_sales_tables,combined_path=Path(LOCAL_COMBINED_PATH))
+    combined_manufacturing = combine_manufacturing_data(LOCAL_STAGED_PATH / "manufacturing",LOCAL_STAGED_PATH / "common",LOCAL_STAGED_PATH / "sales", combine_manufacturing_tables,combined_path=LOCAL_COMBINED_PATH)
+    combined_sales = combine_sales_data(LOCAL_STAGED_PATH / "sales",LOCAL_STAGED_PATH /"manufacturing", combine_sales_tables,combined_path=LOCAL_COMBINED_PATH)
     #combined_inventory = combine_inventory_data(LOCAL_STAGED_PATH / "inventory", combine_inventory_tables,combined_path= Path(LOCAL_COMBINED_PATH))
     #combined_reportings = combine_manufacturing_reportings(LOCAL_STAGED_PATH / "manufacturing",LOCAL_STAGED_PATH / "common",LOCAL_STAGED_PATH / "sales",combine_reporting_tables)
     #combined_materials = combine_sales_margin_data(LOCAL_STAGED_PATH / "sales",LOCAL_STAGED_PATH / "inventory",LOCAL_STAGED_PATH / "common",combine_material_tables)
-    combined_work_intervals = combine_work_interval_data(LOCAL_STAGED_PATH / "time_recording",LOCAL_STAGED_PATH / "manufacturing",combine_work_interval_tables,combined_path=Path(LOCAL_COMBINED_PATH))
+    combined_work_intervals = combine_work_interval_data(LOCAL_STAGED_PATH / "time_recording",LOCAL_STAGED_PATH / "manufacturing",combine_work_interval_tables,combined_path=LOCAL_COMBINED_PATH)
    
     fact_order_rows = process_and_stage_fact_order_rows(Path(combined_sales))
     fact_workphases = process_and_stage_fact_workphases(Path(combined_manufacturing))
@@ -210,11 +209,11 @@ def erp_file_processor_test():
     for table_name, df in processed_dims.items():
         append_df_to_excel(df, table_name)
 
-    flush_excel()
+flush_excel()
 
 
 
-    """ def combine_sales_margin_data(
+""" def combine_sales_margin_data(
     staged_sales_path: Path,
     staged_inventory_path: Path,
     staged_common_path: Path,

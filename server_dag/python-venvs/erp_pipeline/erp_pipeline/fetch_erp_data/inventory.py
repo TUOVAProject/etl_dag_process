@@ -3,7 +3,7 @@ import requests
 from typing import Optional
 from erp_pipeline.helpers.file_helpers import save_parquet
 from erp_pipeline.file_cleaner import clean_folder
-from erp_pipeline.config.config import INVENTORY_URL, AUTHVALUE,CA_BUNDLE_PATH
+from erp_pipeline.config.config import INVENTORY_URL, AUTHVALUE
 from erp_pipeline.config.path_config import INVENTORY_DIR
 
 

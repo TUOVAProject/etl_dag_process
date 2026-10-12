@@ -6,23 +6,28 @@ from pathlib import Path
 import pandas as pd
 from typing import List, Tuple, Optional
 
+
+LOCAL_BASE_PATH = Path("results")
+LOCAL_RAW_PATH = LOCAL_BASE_PATH / "raw"
+LOCAL_COMBINED_PATH = LOCAL_BASE_PATH / "combined"
+
 INPUT_DIRS = [
-    "results/raw/inventory",
-    "results/raw/common",
-    "results/raw/manufacturing",
-    "results/raw/sales",
-    "results/raw/accounting",
-    "results/raw/time_recording"
+    LOCAL_RAW_PATH / "inventory",
+    LOCAL_RAW_PATH / "common",
+    LOCAL_RAW_PATH / "manufacturing",
+    LOCAL_RAW_PATH / "sales",
+    LOCAL_RAW_PATH / "accounting",
+    LOCAL_RAW_PATH / "time_recording",
 ]
 
 COMBINED_DIRS = [
-    "results/combined/inventory",
-    "results/combined/reportings",
-    "results/combined/manufacturing",
-    "results/combined/sales",
-    "results/combined/materials",
-    "results/combined/materials_raw",
-    "results/combined/time_recording"
+    LOCAL_COMBINED_PATH / "inventory",
+    LOCAL_COMBINED_PATH / "reportings",
+    LOCAL_COMBINED_PATH / "manufacturing",
+    LOCAL_COMBINED_PATH / "sales",
+    LOCAL_COMBINED_PATH / "materials",
+    LOCAL_COMBINED_PATH / "materials_raw",
+    LOCAL_COMBINED_PATH / "time_recording",
 ]
 
 RECURSIVE_WITHIN_DATE_FOLDER = False
@@ -99,19 +104,6 @@ def find_latest_parquet_file_in_category(category_dir: Path):
 def safe_sheet_name(name: str) -> str:
     cleaned = re.sub(r'[:\\/?*\[\]]', "_", name)
     return cleaned[:31] if len(cleaned) > 31 else cleaned
-
-"""def json_to_dataframe(json_obj):
-    
-    if isinstance(json_obj, list):
-        if len(json_obj) == 0:
-            return pd.DataFrame()
-        if all(isinstance(x, dict) for x in json_obj):
-            return pd.DataFrame(json_obj)
-        return pd.DataFrame({"value": json_obj})
-    elif isinstance(json_obj, dict):
-        return pd.DataFrame([json_obj])
-    else:
-        return pd.DataFrame([{"value": json_obj}])"""
 
 
 _ILLEGAL_EXCEL_CHARS_RE = re.compile(r"[\x00-\x08\x0B-\x0C\x0E-\x1F\x7F]")
@@ -198,10 +190,8 @@ def dataset_to_excel():
                         print(f"Skipping invalid parquet ({parquet_path}): {e}")
                         continue
 
-                    base_prefix = root.name
                     base_file = parquet_path.stem
                     sheet_name = safe_sheet_name(f"{base_file}")
-                    print(sheet_name)
 
                     if df.empty:
                         print(f"Empty dataframe from {parquet_path}, writing headers only.")

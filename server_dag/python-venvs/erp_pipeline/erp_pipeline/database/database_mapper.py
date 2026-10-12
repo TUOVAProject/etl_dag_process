@@ -30,7 +30,7 @@ def save_or_raise(df: pd.DataFrame, table_name, conflict_columns) -> None:
         raise RuntimeError(f"save_df epäonnistui ({table_name}) — katso app.log") from None
 
 def process_and_stage_fact_machine_events(combined_work_interval_path: Path):
-
+    print("process_and_stage_fact_machine_events")
     combined_work_intervals = pd.read_parquet(combined_work_interval_path)
     duration = ticks_to_minutes(combined_work_intervals["WorkedTime"])
 
@@ -149,7 +149,7 @@ def process_and_stage_fact_machine_events(combined_work_interval_path: Path):
 
 
 def process_and_stage_fact_order_rows(combined_sales_path: Path):
-
+    print("process_and_stage_fact_order_rows")
     combined_sales = pd.read_parquet(combined_sales_path)
 
     ordered_qty = pd.to_numeric(combined_sales["OrderedQuantity"],errors="coerce")
@@ -257,7 +257,7 @@ def process_and_stage_fact_order_rows(combined_sales_path: Path):
 
 
 def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
-
+    print("process_and_stage_fact_workphases")
     combined_manufacturing = pd.read_parquet(combined_manufacturing_path)
    
     planned_unit_time_min = ticks_to_minutes(combined_manufacturing["PlannedUnitTime"])
@@ -399,6 +399,7 @@ def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
     return fact_workphases
     
 def process_dim(staged_path: Optional[Path] = None,combined_path: Optional[Path] = None):
+    print("process_dim")
     combined_path = combined_path or COMBINED_PATH
     staged_path = staged_path or STAGED_PATH
     _, work_centers = load_latest(staged_path / "manufacturing", "WorkCenters",LoadMode.STAGED)

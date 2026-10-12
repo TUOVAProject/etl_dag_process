@@ -14,7 +14,7 @@ src/__pycache__/
 src/auth/
 docker-compose.yaml
 logs/
-dags/app.log
+dags/
 src/app.log
 app_log.log
 server_dag/.env

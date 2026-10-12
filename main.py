@@ -7,24 +7,31 @@ from src.dag_test import erp_file_processor_test
 from src.dataset_to_excel import dataset_to_excel,export_endpoint_to_csv,combined_dataset_to_excel,combined_export_endpoint_to_csv
 #from dags.erp_file_processor import erp_file_processor_test
 from src.config.logger_config import get_custom_logger
+from time import perf_counter
 
+
+def measure_call(name, function):
+    start = perf_counter()
+    result = function()
+    duration = perf_counter() - start
+    print(f"{name}: {duration:.2f} s")
+    return result
 
 def main():
-    #print("Fetching from /Commons endpoint")
-    #fetch_common()
-    #print("Fetching from /Inventory endpoint")
-    #fetch_inventory()
-    #print("Fetching from /Manufacturing endpoint")
-    #fetch_manufacturing()
-    #print("Fetching from /Sales endpoint")
-    #fetch_sales()
-    #erp_file_processor()
     get_custom_logger()
-    erp_file_processor_test()
-    dataset_to_excel()
-    #export_endpoint_to_csv()
-    #combined_export_endpoint_to_csv()
-    combined_dataset_to_excel()
+    measure_call(
+    "ERP file processor",
+    erp_file_processor_test,
+    )
+    measure_call(
+        "Dataset to Excel",
+        dataset_to_excel,
+    )
+    measure_call(
+        "Combined dataset to Excel",
+        combined_dataset_to_excel,
+    )
+
 
 if __name__ == "__main__":
     main()

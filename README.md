@@ -22,7 +22,7 @@ Includes a DAG for Apache Airflow and a local test that creates excel files from
 
 ## Prerequisites
 
-Dataabase server and database. Database creation script can be found from here: TODO
+Database server and database. Database creation script can be found from here: TODO, and is available as both postgresql compatible and sql compatible version.
 
 ## Dev setup
 
@@ -36,7 +36,7 @@ Dataabase server and database. Database creation script can be found from here: 
 
 ### General
 
-When dag is deployed and enabled, data is fetched once a day and is separated to three stages: raw, staged and combined. 
+When the dag is deployed and enabled, data is fetched once a day and is separated to three stages: raw, staged and combined. 
 The data of the last two days is saved for each raw, staged and combined. The data is stored on docker under results-folder:
 ```
 results/
@@ -79,18 +79,17 @@ results/
 │   │   ├── yyyy-mm-dd-Category1.parquet
 │   │   └── yyyy-mm-dd-Category2.parquet
 │  ...
-│
+...
+
+The project structure:
+
 project/
-├── dags/
-│   └──erp_file_processor.py  #Dag that can be runned locally on your machine with docker
-├── src/
-│   ├──config/ #ERP-data models are defined here. This differs from production.
-│   │   └── erp_config
-│   │   
+│
+├── src/   
 │   ├─dag_test.py #Local run without airflow, saves data to excel files using dataset_to_excel.py
 │   ├─dataset_to_excel.py
 │      ...
-├── server_dag/ #production
+├── server_dag/ #both production and dev environment uses the same code.
 │    └── python-venvs/
 │        ├──erp_pipeline/
 │        │  └──erp_pipeline/
@@ -101,7 +100,8 @@ project/
 │        ├─ .venv
 │        ├─ .env
 │        ├─ pyproject.toml
-
+│
+├── main.py
 ```
 
 #### Notice that the local dag_test.py file uses dev.env-file. The .env and dev.env file must have these variables:
@@ -124,7 +124,8 @@ DB_USER,
 DB_PASSWORD,
 OUTPUT_EXCEL //dev.env only
 ```
-Virtual environment copy command for local developing:
+Install the erp_pipeline package into the current Python environment in editable mode. This makes the shared pipeline code available for both local development and Airflow DAG execution:
+
 pip install -e "server_dag/python-venvs/erp_pipeline/"
 
 src-folder contains testing for local environment and it doesn't ue airflow at all. Data won't be saved to database, it will be saved as excel.
@@ -157,9 +158,24 @@ An example deployment process would go as follows (adjust the paths as needed):
 8. Activate the python virtual environment with `source ./.venv/bin/activate`
 9. Install the copied python modules and their dependencies to the virtual environment with `pip install -e .`
 
+
+### Local test
+
+On src/ folder we have dag_test.py and dateset_to_excel.py.
+
+The test can be run from main.py.
+
+dag_test.py file uses the same code as the airflow dag with few exceptions: 
+1. Instead of using .env file it uses .dev.env file.
+2. Instead of saving the data to database, it creates excel-file with database structure.
+
+dag_test.py simulates the Airflow DAG locally without the need of airflow. It fetches, processes, stages, and combines ERP data, and exports the resulting fact and dimension tables into an Excel file instead of loading them into the database.
+
+dataset_to_excel.py is a standalone utility that converts the latest available raw and combined datasets into Excel files. It does not fetch or process data and can therefore be run independently as long as the source data already exists.
+
 ### The DAG
 
-The dag file is server_erp_file_processor.py. It calls files that are defined in python-venvs/erp_pipeline/ folder.
+The dag file is server_erp_file_processor.py. It calls files that are defined in python-venvs/erp_pipeline/er_pipeline/ folder.
 
 ### erp-pipeline folder content
 
