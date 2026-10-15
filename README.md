@@ -1,4 +1,4 @@
-## ERP-api ETL-process
+## ERP-API ETL-process
 
  ## IMPORTANT!
 >
@@ -106,22 +106,22 @@ project/
 
 #### Notice that the local dag_test.py file uses dev.env-file. The .env and dev.env file must have these variables:
 
-`LOGIN_URL`: The url to API authentication address
-`COMMON_URL`: endpoint address
-`TIMERECORDING_URL`: endpoint address
-`MANUFACTURING_URL`: endpoint address
-`SALES_URL`: endpoint address
-`INVENTORY_URL`: endpoint address
-`PURCHASE_URL`: endpoint address
-`USERNAME`: API username
-`PASSWORD`: API password
-`AUTHVALUE`: Header value added to authentication request
-`DB_SERVER`: Address of the database server
-`DB_PORT`: Port of the database
-`DB_NAME`: Database name
-`DB_USER`: Database username
-`DB_PASSWORD`: Database password
-`OUTPUT_EXCEL`: Folder where the excels are saved //dev.env only
+- `LOGIN_URL`: The url to API authentication address
+- `COMMON_URL`: endpoint address
+- `TIMERECORDING_URL`: endpoint address
+- `MANUFACTURING_URL`: endpoint address
+- `SALES_URL`: endpoint address
+- `INVENTORY_URL`: endpoint address
+- `PURCHASE_URL`: endpoint address
+- `USERNAME`: API username
+- `PASSWORD`: API password
+- `AUTHVALUE`: Header value added to authentication request
+- `DB_SERVER`: Address of the database server
+- `DB_PORT`: Port of the database
+- `DB_NAME`: Database name
+- `DB_USER`: Database username
+- `DB_PASSWORD`: Database password
+- `OUTPUT_EXCEL`: Folder where the excels are saved //dev.env only
 
 Feel free to adjust these values according to api definition.
 
