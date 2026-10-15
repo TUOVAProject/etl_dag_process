@@ -14,11 +14,13 @@
 
 Python script for an ETL process that does the following:
 
-1. Get raw data from (erp) api and saves it locally as parquet (Extract)
+1. Gets raw data from monitor api and saves it locally as parquet (Extract)
 2. Transform the raw data to data warehouse compatible form (Transform)
 3. Upload the data to a postgresql data warehouse (Load).
 
 Includes a local project that creates excel files from the data.
+
+### The project is configured to use monitor erp API. Using different API requires modifications to the code.
 
 ## Prerequisites
 
@@ -104,23 +106,24 @@ project/
 
 #### Notice that the local dag_test.py file uses dev.env-file. The .env and dev.env file must have these variables:
 
-`LOGIN_URL`: 
-`COMMON_URL`:
-`TIMERECORDING_URL`:
-`MANUFACTURING_URL`:
-`SALES_URL`:
-`INVENTORY_URL`:
-`PURCHASE_URL`:
-`USERNAME`:
-`PASSWORD`:
-`AUTHVALUE`:
-`DB_SERVER`:
-`DB_PORT`:
-`DB_NAME`:
-`DB_USER`:
-`DB_PASSWORD`:
+`LOGIN_URL`: The url to API authentication address
+`COMMON_URL`: endpoint address
+`TIMERECORDING_URL`: endpoint address
+`MANUFACTURING_URL`: endpoint address
+`SALES_URL`: endpoint address
+`INVENTORY_URL`: endpoint address
+`PURCHASE_URL`: endpoint address
+`USERNAME`: API username
+`PASSWORD`: API password
+`AUTHVALUE`: Header value added to authentication request
+`DB_SERVER`: Address of the database server
+`DB_PORT`: Port of the database
+`DB_NAME`: Database name
+`DB_USER`: Database username
+`DB_PASSWORD`: Database password
 `OUTPUT_EXCEL`: Folder where the excels are saved //dev.env only
 
+Feel free to adjust these values according to api definition.
 
 ## Local excel file generation
 
@@ -173,16 +176,43 @@ The DAG uses Airflow's `ExternalPythonOperator` running in a virtual environment
 The project provides a default docker-compose.yaml file that defines multiple containers for different services. 
 All Airflow-specific volumes are assumed to be bind mounts that are shared between Airflow containers (e.g. `airflow-dag-processor`, `airflow-worker` etc.).  
 
-Start the Docker environment with:
+`docker-compose.yaml` mounts the following files and directories into the Airflow containers:
 
-`docker-compose up -d`
+- `server_dag/server_erp_file_processor.py` → `/opt/airflow/dags/server_erp_file_processor.py`
+- `server_dag/python-venvs/erp_pipeline` → `/opt/airflow/config/python-venvs/erp_pipeline`
 
-`docker-compose.yaml` mounts the following files and directories into the Airflow container:
+When the environment is started with `docker compose up -d`, the `erp-pipeline-init` service runs `setup_venv.sh`, which creates the Python virtual environment (if it does not already exist) and installs the `erp_pipeline` package with its dependencies. The installation writes to the host-mounted directory `./server_dag/python-venvs/erp_pipeline`, so the container user (UID) must have write access to that directory. Otherwise, the startup fails with a permission error.
 
-- server_erp_file_processor.py → /opt/airflow/dags/server_erp_file_processor.py
-- erp_pipeline → /opt/airflow/config/python-venvs/erp_pipeline
+### 1. Set the Airflow user UID
 
-During container startup, setup_venv.sh creates the erp_pipeline virtual environment and installs the package together with its dependencies.
+Create a `.env` file in the same directory as `docker-compose.yaml`. First, check your UID with `id -u`.
+
+- If the result is **0** (you are root), use the default UID 50000:
+```bash
+  echo "AIRFLOW_UID=50000" > .env
+```
+- Otherwise, use your own UID:
+```bash
+  echo "AIRFLOW_UID=$(id -u)" > .env
+```
+
+### 2. Set directory ownership
+
+The owner of the mounted directories must match the `AIRFLOW_UID` value in `.env`. If you are running as root, omit `sudo`.
+
+```bash
+sudo chown -R <AIRFLOW_UID>:0 ./server_dag ./logs ./plugins
+```
+
+### 3. Start the services
+
+```bash
+docker compose up -d
+docker compose logs erp-pipeline-init
+```
+
+A successful installation ends with the line `erp_pipeline virtual environment is ready.`
+
 
 ## Production deployment setup
 
