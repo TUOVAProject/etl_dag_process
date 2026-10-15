@@ -71,13 +71,8 @@ x-airflow-common:
     _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
     PYTHONPATH: '/opt/airflow/src'
   volumes:
-<<<<<<< HEAD
     - ./server_dag/server_erp_file_processor.py:/opt/airflow/dags/server_erp_file_processor.py
     - ./server_dag/python-venvs/erp_pipeline:/opt/airflow/config/python-venvs/erp_pipeline
-=======
-    - ./server_dag:/opt/airflow/dags/server_dag
-    - ./server_dag/python-venvs:/opt/airflow/config/python-venvs
->>>>>>> f2c804d093af96cd1e6f41a19581cea65a660872
     - ./logs:/opt/airflow/logs
     #- ./config:/opt/airflow/config
     - ./plugins:/opt/airflow/plugins

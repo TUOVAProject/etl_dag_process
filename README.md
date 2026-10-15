@@ -1,4 +1,4 @@
-## ERP-API ETL-process
+## ERP-api ETL-process
 
  ## IMPORTANT!
 >
@@ -14,11 +14,10 @@
 
 Python script for an ETL process that does the following:
 
-1. Get raw data from (ERP) API and saves it locally as Parquet (Extract)
+1. Get raw data from (erp) api and saves it locally as parquet (Extract)
 2. Transform the raw data to data warehouse compatible form (Transform)
-3. Upload the data to a PostgreSQL data warehouse (Load).
+3. Upload the data to a postgresql data warehouse (Load).
 
-<<<<<<< HEAD
 Includes a local project that creates excel files from the data.
 
 ## Prerequisites
@@ -28,13 +27,6 @@ Includes a local project that creates excel files from the data.
 - Docker
 - Database server
 - Database 
-=======
-Includes a DAG for Apache Airflow and a local test that creates Excel files from the data.
-
-## Prerequisites
-
-Database server and database. Database creation script can be found from here: TODO, and is available as both PostgreSQL compatible and sql compatible version.
->>>>>>> f2c804d093af96cd1e6f41a19581cea65a660872
 
 Database creation script can be found from here: https://github.com/TUOVAProject/tuotantotiedon-tietomalli, and is available as both postgresql compatible and sql compatible version.
 
@@ -86,14 +78,13 @@ results/
 │   │   └── yyyy-mm-dd-Category2.parquet
 │  ...
 ...
-```
+
 The project structure:
 
-```
 project/
 │
 ├── src/   
-│   ├─dag_test.py #Local run without airflow, saves data to Excel files using dataset_to_excel.py
+│   ├─dag_test.py #Local run without airflow, saves data to excel files using dataset_to_excel.py
 │   ├─dataset_to_excel.py
 │      ...
 ├── server_dag/ #both production and dev environment uses the same code.
@@ -112,90 +103,38 @@ project/
 ```
 
 #### Notice that the local dag_test.py file uses dev.env-file. The .env and dev.env file must have these variables:
-```
-BASE_URL,
-LOGIN_URL,
-COMMON_URL,
-TIMERECORDING_URL,
-MANUFACTURING_URL,
-SALES_URL,
-INVENTORY_URL,
-PURCHASE_URL,
-USERNAME,
-PASSWORD,
-AUTHVALUE,
-DB_SERVER,
-DB_PORT,
-DB_NAME,
-DB_USER,
-DB_PASSWORD,
-OUTPUT_EXCEL //dev.env only
-```
-<<<<<<< HEAD
 
-## Local test
-
-On src/ folder we have dag_test.py and dataset_to_excel.py.
-=======
-Install the `erp_pipeline` package into the current Python environment in editable mode. This makes the shared pipeline code available for both local development and Airflow DAG execution:
-
-`pip install -e "server_dag/python-venvs/erp_pipeline/`
-
-`src` folder contains testing for local environment and it doesn't ue airflow at all. Data won't be saved to database, it will be saved as Excel.
-
-The DAG uses Airflow's `ExternalPythonOperator` running in a virtual environment to keep project dependencies from interfering with Airflow's own dependencies (as well as any other projects'). The DAG file authenticates to API using credentials defined in the .env file and creates and stores the access token to Airflow's variables
-
-This setup is based on Airflow's example `docker-compose.yml` file that defines multiple containers for different services. All Airflow-specific volumes are assumed to be bind mounts that are shared between Airflow containers (e.g. `airflow-dag-processor`, `airflow-worker` etc.).
-
-The virtual environment is created under Airflow's `config` folder, which in this case is expected to be mounted to the containers as follows:
-
-`/home/user/projects/airflow/data/config:/opt/airflow/config`
-
-An example deployment process would go as follows (adjust the paths as needed):
-
-### The virtual environment
-
-1. Access the Airflow host machine (e.g. with `ssh`)
-2. Access Airflow container with `docker exec -it airflow-dag-processor bash` (adjust container name as needed)
-3. Create directory for the virtual environment with `mkdir -p /opt/airflow/config/python-venvs/erp_pipeline/data`
-4. Create the virtual environment with `cd /opt/airflow/config/python-venvs/erp_pipeline && python -m venv .venv`
-5. Copy contents of the `./build` directory to the Airflow host machine, e.g.:
-
-`scp -r ./build/* user@AIRFLOW_HOST:/home/user/projects/airflow/data/config/python-venvs/erp_pipeline/`
-
-`scp ./build/.env user@AIRFLOW_HOST:/home/user/projects/airflow/data/config/python-venvs/erp_pipeline/`
-
-(it's likely to get `permission denied` error, in that case either `chown` or `chmod` the target folder as appropriate, or `scp` the contents to somewhere else first, then `sudo cp` to the destination folder on the target host)
-
-7. Access the Airflow host machine and Airflow container again as per steps 1 and 2 above, then `cd /opt/airflow/config/python-venvs/erp_pipeline`
-8. Activate the python virtual environment with `source ./.venv/bin/activate`
-9. Install the copied python modules and their dependencies to the virtual environment with `pip install -e .`
+`LOGIN_URL`: 
+`COMMON_URL`:
+`TIMERECORDING_URL`:
+`MANUFACTURING_URL`:
+`SALES_URL`:
+`INVENTORY_URL`:
+`PURCHASE_URL`:
+`USERNAME`:
+`PASSWORD`:
+`AUTHVALUE`:
+`DB_SERVER`:
+`DB_PORT`:
+`DB_NAME`:
+`DB_USER`:
+`DB_PASSWORD`:
+`OUTPUT_EXCEL`: Folder where the excels are saved //dev.env only
 
 
-### Local test
+## Local excel file generation
 
 On src/ folder we have `dag_test.py` and `dataset_to_excel.py`.
->>>>>>> f2c804d093af96cd1e6f41a19581cea65a660872
 
-Local testing can be started from `main.py`.
+The test can be run from `main.py`.
 
-dag_test.py file uses the same code as the airflow dag with few exceptions: 
-1. Uses `.dev.env` instead of `.env`.
-2. Instead of loading data into the database, it exports the resulting tables into an Excel file that mirrors the database structure.
+`dag_test.py` file uses the same code as the airflow dag with few exceptions: 
+1. Instead of using `.env` file it uses `.dev.env` file.
+2. Instead of saving the data to database, it creates excel-file with database structure.
 
-`dag_test.py` simulates the Airflow DAG locally without requiring Airflow. It fetches, processes, stages, and combines ERP data, and exports the resulting fact and dimension tables into an Excel file instead of loading them into the database.
+`dag_test.py` simulates the Airflow DAG locally without the need of airflow. It fetches, processes, stages, and combines ERP data, and exports the resulting fact and dimension tables into an Excel file instead of loading them into the database.
 
-`dataset_to_excel.py` is a standalone utility that converts the latest available raw and combined datasets into Excel files. It does not fetch or process data and can therefore be executed independently as long as the required source data already exists.
-
-#### Typical Workflow
-
-For a full local test run:
-
-Run `main.py` (executes `dag_test.py`).
-Verify the generated database model Excel file.
-Run `dataset_to_excel.py` to generate Excel exports of the latest raw and combined datasets for debugging and validation purposes.
-
-The generated Excel files are written to the folder defined by dev.env variable `OUTPUT_EXCEL_FOLDER`.
+`dataset_to_excel.py` is a standalone utility that converts the latest available raw and combined datasets into Excel files. It does not fetch or process data and can therefore be run independently as long as the source data already exists.
 
 ### Local development setup
 
@@ -204,7 +143,7 @@ The generated Excel files are written to the folder defined by dev.env variable 
 3. Activate virtual environment with `source .venv/bin/activate`
 4. Install packages with `pip install -e "server_dag/python-venvs/erp_pipeline/"`
 5. Create and set up `.env` and `dev.env` files. Required values are listed earlier on the instructions
-6. Install packages used on the dag_test.py and dataset_to_excel.py with : `python -m pip install -r requirements-dev.txt`
+6. Install packages used on the `dag_test.py` and `dataset_to_excel.py` with : `python -m pip install -r requirements-dev.txt`
 7. (Optional) Create launch.json file for visual studio code `.vscode/launch.json` 
 ```
 {
@@ -222,6 +161,9 @@ The generated Excel files are written to the folder defined by dev.env variable 
 }
 ```
 8. Run with python main.py or with launch configuration
+9. Verify the generated database model Excel file
+10. The generated Excel files are written to the folder defined by dev.env variable `OUTPUT_EXCEL_FOLDER`.
+
 
 
 ## Local airflow deploy configuration
@@ -235,13 +177,12 @@ Start the Docker environment with:
 
 `docker-compose up -d`
 
-docker-compose.yaml mounts the following files and directories into the Airflow container:
+`docker-compose.yaml` mounts the following files and directories into the Airflow container:
 
 - server_erp_file_processor.py → /opt/airflow/dags/server_erp_file_processor.py
 - erp_pipeline → /opt/airflow/config/python-venvs/erp_pipeline
 
 During container startup, setup_venv.sh creates the erp_pipeline virtual environment and installs the package together with its dependencies.
-
 
 ## Production deployment setup
 
@@ -294,11 +235,7 @@ The database-folder contains `connection.py`, `database_mapper.py`, `writers.py`
 
 `connection.py`: The database-connection is defined here. File requires that .env file is defined with the following values: `DB_SERVER`, `DB_NAME`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`. Uses PostgreSQL.
 
-<<<<<<< HEAD
-database_mapper.py: The data is mapped to the datamodel. The database needs to be defined with the same columns and column-types. You can find the create-database-script from here: https://github.com/TUOVAProject/tuotantotiedon-tietomalli .
-=======
 `database_mapper.py`: The data is mapped to the datamodel. The database schema must match the column names and data types defined in the mapper. You can find the create-database-script from here: TODO: .
->>>>>>> f2c804d093af96cd1e6f41a19581cea65a660872
 
 `writers.py`: Provides database write operations used by the ETL pipeline. It supports loading data into PostgreSQL tables, clearing existing data when required, truncating fact tables during full refreshes, and performing incremental loads through UPSERT logic to avoid duplicate records while updating existing ones.
 
@@ -342,8 +279,8 @@ Functions for cleaning old Parquet files and dated folders while preserving rece
 
 #### save.py
 
-<<<<<<< HEAD
-Functions for saving parquet files.
+Functions for saving Parquet files.
+
 
 ## Additional Information
 
@@ -360,6 +297,3 @@ Functions for saving parquet files.
 ### On-premises server environment
 
 - https://github.com/TUOVAProject/tuova_on_prem_server
-=======
-Functions for saving Parquet files.
->>>>>>> f2c804d093af96cd1e6f41a19581cea65a660872
