@@ -12,27 +12,25 @@
 
 ## Overview
 
-Python scripts for an ETL process that does the following:
+Python script for an ETL process that does the following:
 
 1. Get raw data from (erp) api and saves it locally as parquet (Extract)
 2. Transform the raw data to data warehouse compatible form (Transform)
 3. Upload the data to a postgresql data warehouse (Load).
 
-Includes a DAG for Apache Airflow and a local test that creates excel files from the data.
+Includes a local project that creates excel files from the data.
 
 ## Prerequisites
 
-Database server and database. Database creation script can be found from here: TODO, and is available as both postgresql compatible and sql compatible version.
+- Git
+- Python
+- Docker
+- Database server
+- Database 
 
-## Dev setup
+Database creation script can be found from here: https://github.com/TUOVAProject/tuotantotiedon-tietomalli, and is available as both postgresql compatible and sql compatible version.
 
-1. Clone the project
-2. Create virtual environment with `uv init` or `python3 -m venv .venv`
-3. Install dependencies with `uv sync` or `pip install -r requirements.txt`
-4. Create .env with `cp .env.example .env` and modify as needed
-5. Modify and run example visualization with `python -m scripts.test`
-
-## Deployment setup
+If you are interested on building on premises server, instructions can be found from here: https://github.com/TUOVAProject/tuova_on_prem_server.
 
 ### General
 
@@ -124,44 +122,10 @@ DB_USER,
 DB_PASSWORD,
 OUTPUT_EXCEL //dev.env only
 ```
-Install the erp_pipeline package into the current Python environment in editable mode. This makes the shared pipeline code available for both local development and Airflow DAG execution:
 
-pip install -e "server_dag/python-venvs/erp_pipeline/"
+## Local test
 
-src-folder contains testing for local environment and it doesn't ue airflow at all. Data won't be saved to database, it will be saved as excel.
-
-The DAG uses Airflow's `ExternalPythonOperator` running in a virtual environment to keep project dependencies from interfering with Airflow's own dependencies (as well as any other projects'). The DAG file authenticates to api using credentials defined in the .env file and creates and stores the access token to Airflow's variables
-
-This setup is based on Airflow's example `docker-compose.yml` file that defines multiple containers for different services. All Airflow-specific volumes are assumed to be bind mounts that are shared between Airflow containers (e.g. `airflow-dag-processor`, `airflow-worker` etc.).
-
-The virtual environment is created under Airflow's `config` folder, which in this case is expected to be mounted to the containers as follows:
-
-`/home/user/projects/airflow/data/config:/opt/airflow/config`
-
-An example deployment process would go as follows (adjust the paths as needed):
-
-### The virtual environment
-
-1. Access the Airflow host machine (e.g. with `ssh`)
-2. Access Airflow container with `docker exec -it airflow-dag-processor bash` (adjust container name as needed)
-3. Create directory for the virtual environment with `mkdir -p /opt/airflow/config/python-venvs/erp_pipeline/data`
-4. Create the virtual environment with `cd /opt/airflow/config/python-venvs/erp_pipeline && python -m venv .venv`
-5. Copy contents of the `./build` directory to the Airflow host machine, e.g.:
-
-`scp -r ./build/* user@AIRFLOW_HOST:/home/user/projects/airflow/data/config/python-venvs/erp_pipeline/`
-
-`scp ./build/.env user@AIRFLOW_HOST:/home/user/projects/airflow/data/config/python-venvs/erp_pipeline/`
-
-(it's likely to get `permission denied` error, in that case either `chown` or `chmod` the target folder as appropriate, or `scp` the contents to somewhere else first, then `sudo cp` to the destination folder on the target host)
-
-7. Access the Airflow host machine and Airflow container again as per steps 1 and 2 above, then `cd /opt/airflow/config/python-venvs/erp_pipeline`
-8. Activate the python virtual environment with `source ./.venv/bin/activate`
-9. Install the copied python modules and their dependencies to the virtual environment with `pip install -e .`
-
-
-### Local test
-
-On src/ folder we have dag_test.py and dateset_to_excel.py.
+On src/ folder we have dag_test.py and dataset_to_excel.py.
 
 The test can be run from main.py.
 
@@ -172,6 +136,72 @@ dag_test.py file uses the same code as the airflow dag with few exceptions:
 dag_test.py simulates the Airflow DAG locally without the need of airflow. It fetches, processes, stages, and combines ERP data, and exports the resulting fact and dimension tables into an Excel file instead of loading them into the database.
 
 dataset_to_excel.py is a standalone utility that converts the latest available raw and combined datasets into Excel files. It does not fetch or process data and can therefore be run independently as long as the source data already exists.
+
+### Local development setup
+
+1. Clone the project
+2. On root of the etl_dag_process create virtual environment with `uv init` or `python3 -m venv .venv`
+3. Activate virtual environment with `source .venv/bin/activate`
+4. Install packages with `pip install -e "server_dag/python-venvs/erp_pipeline/"`
+5. Create and set up `.env` and `dev.env` files. Required values are listed earlier on the instructions
+6. Install packages used on the dag_test.py and dataset_to_excel.py with : `python -m pip install -r requirements-dev.txt`
+7. (Optional) Create launch.json file for visual studio code `.vscode/launch.json` 
+```
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debug: main.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/main.py",
+            "console": "integratedTerminal",
+            "cwd": "${workspaceFolder}"
+        }
+    ]
+}
+```
+8. Run with python main.py or with launch configuration
+
+
+## Local airflow deploy configuration
+
+The DAG uses Airflow's `ExternalPythonOperator` running in a virtual environment to keep project dependencies from interfering with Airflow's own dependencies (as well as any other projects').
+
+The project provides a default docker-compose.yaml file that defines multiple containers for different services. 
+All Airflow-specific volumes are assumed to be bind mounts that are shared between Airflow containers (e.g. `airflow-dag-processor`, `airflow-worker` etc.).  
+
+Start the Docker environment with:
+
+`docker-compose up -d`
+
+docker-compose.yaml mounts the following files and directories into the Airflow container:
+
+- server_erp_file_processor.py → /opt/airflow/dags/server_erp_file_processor.py
+- erp_pipeline → /opt/airflow/config/python-venvs/erp_pipeline
+
+During container startup, setup_venv.sh creates the erp_pipeline virtual environment and installs the package together with its dependencies.
+
+
+## Production deployment setup
+
+An example deployment process would go as follows (adjust the paths as needed):
+
+1. Access the Airflow host machine (e.g. with `ssh`)
+2. Access Airflow container with `docker exec -it airflow-worker bash` (adjust container name as needed)
+3. Create directory for the virtual environment with `mkdir -p /opt/airflow/config/python-venvs/erp_pipeline`
+4. Create the virtual environment with `cd /opt/airflow/config/python-venvs/erp_pipeline && python -m venv .venv`
+5. Copy contents of the `/server_dag/python-venvs/erp_pipeline` directory to the Airflow host machine, e.g.:
+
+`scp -r ./build/* user@AIRFLOW_HOST:/home/user/projects/airflow/data/config/python-venvs/erp_pipeline/`
+
+`scp ./build/.env user@AIRFLOW_HOST:/home/user/projects/airflow/data/config/python-venvs/erp_pipeline/`
+
+(it's likely to get `permission denied` error, in that case either `chown` or `chmod` the target folder as appropriate, or `scp` the contents to somewhere else first, then `sudo cp` to the destination folder on the target host)
+
+7. Access the Airflow host machine and Airflow container again as per steps 1 and 2 above, then `cd /opt/airflow/config/python-venvs/erp_pipeline`
+8. Activate the python virtual environment with `source ./.venv/bin/activate`
+9. Install the copied python modules and their dependencies to the virtual environment with `pip install -e .`
 
 ### The DAG
 
@@ -204,7 +234,7 @@ The database-folder contains connection.py, database_mapper.py, writers.py
 
 connection.py: The database-connection is defined here. File requires that .env file is defined with the following values: DB_SERVER, DB_NAME, DB_PORT, DB_USER, DB_PASSWORD. Uses postgresql.
 
-database_mapper.py: The data is mapped to the datamodel. The database needs to be defined with the same columns and column-types. You can find the create-database-script from here: TODO: .
+database_mapper.py: The data is mapped to the datamodel. The database needs to be defined with the same columns and column-types. You can find the create-database-script from here: https://github.com/TUOVAProject/tuotantotiedon-tietomalli .
 
 writers.py: Provides database write operations used by the ETL pipeline. It supports loading data into PostgreSQL tables, clearing existing data when required, truncating fact tables during full refreshes, and performing incremental loads through UPSERT logic to avoid duplicate records while updating existing ones.
 
@@ -247,3 +277,19 @@ Functions for cleaning old parquet files and dated folders while preserving rece
 #### save.py
 
 Functions for saving parquet files.
+
+## Additional Information
+
+### The TUOVA Project
+
+- https://tuova.savonia.fi
+- https://tuovaproject.github.io/
+
+### The data model ("Tuotantotiedon tietomalli")
+
+- https://github.com/TUOVAProject/tuotantotiedon-tietomalli
+- https://tuovaproject.github.io/tuotantotiedon-tietomalli/
+
+### On-premises server environment
+
+- https://github.com/TUOVAProject/tuova_on_prem_server

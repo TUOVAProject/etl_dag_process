@@ -7,11 +7,11 @@ import re
 import os
 from pathlib import Path
 from dotenv import set_key, dotenv_values, load_dotenv
-from erp_pipeline.config.erp_config import (combine_manufacturing_tables,combine_sales_tables,combine_work_interval_tables)
+from erp_pipeline.config.erp_config import (combine_manufacturing_tables,combine_sales_tables,combine_work_interval_tables,combine_inventory_tables)
 from erp_pipeline.config.path_config import LOCAL_RAW_PATH_STR,LOCAL_RAW_PATH, LOCAL_COMBINED_PATH, LOCAL_STAGED_PATH
 from erp_pipeline.process.process_erp import process_erp_files
 from erp_pipeline.helpers.file_helpers import get_latest_endpoint_files
-from erp_pipeline.combine_data.combine_data_files import combine_manufacturing_data,combine_sales_data,combine_work_interval_data
+from erp_pipeline.combine_data.combine_data_files import combine_manufacturing_data,combine_sales_data,combine_work_interval_data,combine_inventory_data
 from erp_pipeline.database.database_mapper import process_and_stage_fact_machine_events,process_and_stage_fact_order_rows,process_and_stage_fact_workphases,process_dim
 from erp_pipeline.fetch_erp_data.common import fetch_common
 from erp_pipeline.fetch_erp_data.inventory import fetch_inventory
@@ -143,7 +143,7 @@ def clean_dataframe_for_excel(df: pd.DataFrame) -> pd.DataFrame:
     
 #Test for debugging the airflow behaviour without aiflow
 def erp_file_processor_test():
-    values = dotenv_values(DEVENV_PATH)
+    """values = dotenv_values(DEVENV_PATH)
 
 
     cached_token = get_cached_token_or_none()
@@ -157,34 +157,34 @@ def erp_file_processor_test():
     fetch_inventory(authenticate,values.get("INVENTORY_URL"),LOCAL_RAW_PATH_STR + "/inventory")
     fetch_manufacturing(authenticate,values.get("MANUFACTURING_URL"),LOCAL_RAW_PATH_STR + "/manufacturing")
     fetch_sales(authenticate,values.get("SALES_URL"),LOCAL_RAW_PATH_STR + "/sales")
-    fetch_time_recording(authenticate,values.get("TIMERECORDING_URL"),LOCAL_RAW_PATH_STR + "/timerecording")
+    fetch_time_recording(authenticate,values.get("TIMERECORDING_URL"),LOCAL_RAW_PATH_STR + "/time_recording")"""
 
-categories = [
-    "manufacturing",
-    "common",
-    "inventory",
-    "sales",
-    "time_recording",
-]
+    categories = [
+        "manufacturing",
+        "common",
+        "inventory",
+        "sales",
+        "time_recording",
+    ]
 
-for category in categories:
-    endpoint_files = get_latest_endpoint_files(
-        category,
-        LOCAL_RAW_PATH
-    )
+    for category in categories:
+        endpoint_files = get_latest_endpoint_files(
+            category,
+            LOCAL_RAW_PATH
+        )
 
-    for files in endpoint_files.values():
-        for file_path in files:
-            process_erp_files(
-                Path(file_path),
-                staged_path=LOCAL_STAGED_PATH
-            )
+        for files in endpoint_files.values():
+            for file_path in files:
+                process_erp_files(
+                    Path(file_path),
+                    staged_path=LOCAL_STAGED_PATH
+                )
     
     
         
     combined_manufacturing = combine_manufacturing_data(LOCAL_STAGED_PATH / "manufacturing",LOCAL_STAGED_PATH / "common",LOCAL_STAGED_PATH / "sales", combine_manufacturing_tables,combined_path=LOCAL_COMBINED_PATH)
     combined_sales = combine_sales_data(LOCAL_STAGED_PATH / "sales",LOCAL_STAGED_PATH /"manufacturing", combine_sales_tables,combined_path=LOCAL_COMBINED_PATH)
-    #combined_inventory = combine_inventory_data(LOCAL_STAGED_PATH / "inventory", combine_inventory_tables,combined_path= Path(LOCAL_COMBINED_PATH))
+    combined_inventory = combine_inventory_data(LOCAL_STAGED_PATH / "inventory", combine_inventory_tables,combined_path= Path(LOCAL_COMBINED_PATH))
     #combined_reportings = combine_manufacturing_reportings(LOCAL_STAGED_PATH / "manufacturing",LOCAL_STAGED_PATH / "common",LOCAL_STAGED_PATH / "sales",combine_reporting_tables)
     #combined_materials = combine_sales_margin_data(LOCAL_STAGED_PATH / "sales",LOCAL_STAGED_PATH / "inventory",LOCAL_STAGED_PATH / "common",combine_material_tables)
     combined_work_intervals = combine_work_interval_data(LOCAL_STAGED_PATH / "time_recording",LOCAL_STAGED_PATH / "manufacturing",combine_work_interval_tables,combined_path=LOCAL_COMBINED_PATH)
@@ -209,7 +209,7 @@ for category in categories:
     for table_name, df in processed_dims.items():
         append_df_to_excel(df, table_name)
 
-flush_excel()
+    flush_excel()
 
 
 

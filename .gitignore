@@ -20,3 +20,5 @@ app_log.log
 server_dag/.env
 server_dag/certs/
 server_dag/config/config.py
+todo.txt
+server_dag/python-venvs/erp_pipeline/.venv/

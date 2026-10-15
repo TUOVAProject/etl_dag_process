@@ -1,4 +1,4 @@
-Metadata-Version: 2.4
+Metadata-Version: 2.1
 Name: erp_pipeline
 Version: 0.1.0
 Requires-Dist: pandas

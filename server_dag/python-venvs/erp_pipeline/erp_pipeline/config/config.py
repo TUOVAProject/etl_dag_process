@@ -5,7 +5,6 @@ import os
 env_path = Path(__file__).resolve().parent.parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
-BASE_URL = os.environ["BASE_URL"]
 LOGIN_URL = os.environ["LOGIN_URL"]
 COMMON_URL = os.environ["COMMON_URL"]
 TIMERECORDING_URL = os.environ["TIMERECORDING_URL"]

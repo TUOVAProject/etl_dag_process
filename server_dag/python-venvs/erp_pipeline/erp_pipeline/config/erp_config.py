@@ -28,7 +28,7 @@ ERP_MANUFACTURING_SOURCE_TYPES = [
     "erp_manufacturing_materialRows",
     "erp_manufacturing_operationRowControlDataRows",
     "erp_manufacturing_operationRows",
-     "erp_manufacturing_orderQuantityManufacturingOrderOperations",
+    "erp_manufacturing_orderQuantityManufacturingOrderOperations",
     "erp_manufacturing_orderQuantityManufacturingOrders",
     "erp_manufacturing_preparations",
     "erp_manufacturing_productionCalendarExceptions",
