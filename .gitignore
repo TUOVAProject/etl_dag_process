@@ -12,7 +12,6 @@ results/
 src/config/config.py
 src/__pycache__/
 src/auth/
-docker-compose.yaml
 logs/
 dags/
 src/app.log
@@ -20,3 +19,4 @@ app_log.log
 server_dag/.env
 server_dag/certs/
 server_dag/config/config.py
+todo.txt
