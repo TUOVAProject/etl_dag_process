@@ -277,7 +277,10 @@ def process_and_stage_fact_workphases(combined_manufacturing_path : Path):
     rejected_qty = pd.to_numeric(combined_manufacturing["RejectedQuantity"],errors="coerce")
    
     actual_finish = combined_manufacturing["ActualFinishDate"]
+<<<<<<< HEAD
 
+=======
+>>>>>>> f2c804d093af96cd1e6f41a19581cea65a660872
     phase_duration_per_piece_min = (
         pd.Series(phase_duration_stamping_min / produced_qty)
         .replace([np.inf, -np.inf], np.nan)
