@@ -11,8 +11,6 @@
 > ![Co-funded by the EU](co-fundedbythe-eu.png)
 
 
-Author : Sasu Eskelinen
-
 ## Overview
 
 Python project implementing an ETL pipeline that:
@@ -368,6 +366,8 @@ Functions for cleaning old Parquet files and dated directorys while preserving r
 
 Functions for saving Parquet files.
 
+
+Author : Sasu Eskelinen
 
 ## Additional Information
 
