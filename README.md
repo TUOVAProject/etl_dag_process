@@ -1,5 +1,13 @@
 ## ERP-API ETL-process
 
+[![DOI](https://zenodo.org/badge/1173508118.svg)](https://doi.org/10.5281/zenodo.23498226)
+
+## Author
+
+> Sasu Eskelinen \
+> sasu.eskelinen@savonia.fi \
+> Savonia University of Applied Sciences
+
  ## IMPORTANT!
 >
 > This repository was created as part of the TUOVA Project (see https://tuova.savonia.fi and https://tuovaproject.github.io/). Some of the information presented here might assume familiarity with other repositories created during the course of the project. For more details on those, see the "Additional Information" section at the bottom of this README.
@@ -365,9 +373,6 @@ Functions for cleaning old Parquet files and dated directorys while preserving r
 #### save.py
 
 Functions for saving Parquet files.
-
-
-Author : Sasu Eskelinen
 
 ## Additional Information
 
