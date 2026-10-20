@@ -143,8 +143,7 @@ def clean_dataframe_for_excel(df: pd.DataFrame) -> pd.DataFrame:
     
 #Test for debugging the airflow behaviour without aiflow
 def erp_file_processor_test():
-    """values = dotenv_values(DEVENV_PATH)
-
+    values = dotenv_values(DEVENV_PATH)
 
     cached_token = get_cached_token_or_none()
     if(cached_token):
@@ -157,7 +156,7 @@ def erp_file_processor_test():
     fetch_inventory(authenticate,values.get("INVENTORY_URL"),LOCAL_RAW_PATH_STR + "/inventory")
     fetch_manufacturing(authenticate,values.get("MANUFACTURING_URL"),LOCAL_RAW_PATH_STR + "/manufacturing")
     fetch_sales(authenticate,values.get("SALES_URL"),LOCAL_RAW_PATH_STR + "/sales")
-    fetch_time_recording(authenticate,values.get("TIMERECORDING_URL"),LOCAL_RAW_PATH_STR + "/time_recording")"""
+    fetch_time_recording(authenticate,values.get("TIMERECORDING_URL"),LOCAL_RAW_PATH_STR + "/time_recording")
 
     categories = [
         "manufacturing",

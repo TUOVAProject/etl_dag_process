@@ -10,34 +10,58 @@
 >
 > ![Co-funded by the EU](co-fundedbythe-eu.png)
 
+
+Author : Sasu Eskelinen
+
 ## Overview
 
-Python script for an ETL process that does the following:
+Python project implementing an ETL pipeline that:
 
-1. Gets raw data from monitor api and saves it locally as parquet (Extract)
-2. Transform the raw data to data warehouse compatible form (Transform)
-3. Upload the data to a postgresql data warehouse (Load).
+1. Extracts raw data from the MONITOR ERP API and stores it as parquet files (Extract).
+2. Transforms the raw data into a format compatible with the data warehouse (Transform).
+3. Loads the transformed data into a PostgreSQL data warehouse (Load).
 
-Includes a local project that creates excel files from the data.
+```
+Monitor ERP API
+      │
+      ▼
+     Raw
+      │
+      ▼
+    Staged
+      │
+      ▼
+   Combined
+      │
+      ▼
+Database mapping
+      │
+      ▼
+PostgreSQL Data Warehouse
 
-### The project is configured to use monitor erp API. Using different API requires modifications to the code.
+```
+
+The project also includes tools for running the pipeline locally and exporting the resulting data to Excel files.
+
+### Note: The project is configured for the MONITOR ERP API. Using a different API requires modifications to the code and configuration.
 
 ## Prerequisites
 
 - Git
 - Python
 - Docker
-- Database server
-- Database 
+- PostgreSQL database server
+- PostgreSQL database for the data warehouse 
 
-Database creation script can be found from here: https://github.com/TUOVAProject/tuotantotiedon-tietomalli, and is available as both postgresql compatible and sql compatible version.
+The database creation scripts can be found from here: https://github.com/TUOVAProject/tuotantotiedon-tietomalli. Scripts are available for both PostgreSQL and SQL Server.
 
-If you are interested on building on premises server, instructions can be found from here: https://github.com/TUOVAProject/tuova_on_prem_server.
+If you are interested in setting up an on-premises server, instructions can be found here: https://github.com/TUOVAProject/tuova_on_prem_server.
 
 ### General
 
-When the dag is deployed and enabled, data is fetched once a day and is separated to three stages: raw, staged and combined. 
-The data of the last two days is saved for each raw, staged and combined. The data is stored on docker under results-folder:
+When the DAG is deployed and enabled, data is fetched once per day and processed through three stages: raw, staged, and combined.
+The retention period for raw, staged, and combined data is controlled by the days_to_keep_parameter setting. By default, data from the two most recent days is retained. 
+The data is stored on Docker under results directory:
 ```
 results/
 ├── combined/
@@ -86,94 +110,111 @@ The project structure:
 project/
 │
 ├── src/   
-│   ├─dag_test.py #Local run without airflow, saves data to excel files using dataset_to_excel.py
+│   ├─dag_test.py #Local run without Airflow, saves data to Excel files using dataset_to_excel.py
 │   ├─dataset_to_excel.py
+│   ├─dev.env
 │      ...
 ├── server_dag/ #both production and dev environment uses the same code.
 │    └── python-venvs/
 │        ├──erp_pipeline/
-│        │  └──erp_pipeline/
-│        │       ├──auth/
-│        │       ├──config/
-│        │       ├──database/
-│        │       ...
-│        ├─ .venv
-│        ├─ .env
-│        ├─ pyproject.toml
-│
+│        │  ├─erp_pipeline/
+│        │  │    ├──auth/
+│        │  │    ├──config/
+│        │  │    ├──database/
+│        │  │   ...
+│        │  │
+│        │  ├─ .venv/
+│        │  ├─ .env
+│        │  ├─ pyproject.toml
+│        │ ...
+│       ...
+├── .env
 ├── main.py
+├── requirements-dev.txt
+
 ```
 
 #### Notice that the local dag_test.py file uses dev.env-file. The .env and dev.env file must have these variables:
 
-- `LOGIN_URL`: The url to API authentication address
-- `COMMON_URL`: endpoint address
-- `TIMERECORDING_URL`: endpoint address
-- `MANUFACTURING_URL`: endpoint address
-- `SALES_URL`: endpoint address
-- `INVENTORY_URL`: endpoint address
-- `PURCHASE_URL`: endpoint address
+- `LOGIN_URL`: API authentication URL
+- `COMMON_URL`: Common API endpoint URL
+- `TIMERECORDING_URL`: Time recording API endpoint URL
+- `MANUFACTURING_URL`: Manufacturing API endpoint URL
+- `SALES_URL`: Sales API endpoint URL
+- `INVENTORY_URL`: Inventory API endpoint URL
+- `PURCHASE_URL`: Purchase API endpoint URL
 - `USERNAME`: API username
 - `PASSWORD`: API password
-- `AUTHVALUE`: Header value added to authentication request
-- `DB_SERVER`: Address of the database server
-- `DB_PORT`: Port of the database
+- `AUTHVALUE`: Header value added to the authentication request
+- `DB_SERVER`: Database server address
+- `DB_PORT`: Database server port
 - `DB_NAME`: Database name
 - `DB_USER`: Database username
 - `DB_PASSWORD`: Database password
-- `OUTPUT_EXCEL`: Folder where the excels are saved //dev.env only
+- `OUTPUT_EXCEL_FOLDER`: Directory where generated Excel files are saved (`dev.env` only)
 
-Feel free to adjust these values according to api definition.
+Adjust these values according to the API configuration being used.
 
-## Local excel file generation
+## Local Excel file generation
 
-On src/ folder we have `dag_test.py` and `dataset_to_excel.py`.
+The src/ directory contains `dag_test.py` and `dataset_to_excel.py`.
 
 The test can be run from `main.py`.
 
-`dag_test.py` file uses the same code as the airflow dag with few exceptions: 
-1. Instead of using `.env` file it uses `.dev.env` file.
-2. Instead of saving the data to database, it creates excel-file with database structure.
+`dag_test.py` file uses the same code as the Airflow DAG with a few exceptions: 
+1. Instead of using `.env` file it uses `dev.env` file.
+2. Instead of saving the data to database, it creates Excel files with database schema.
 
-`dag_test.py` simulates the Airflow DAG locally without the need of airflow. It fetches, processes, stages, and combines ERP data, and exports the resulting fact and dimension tables into an Excel file instead of loading them into the database.
+`dag_test.py` simulates the Airflow DAG locally without the need of Airflow. It fetches, processes, stages, and combines ERP data, and exports the resulting fact and dimension tables into an Excel file instead of loading them into the database.
 
 `dataset_to_excel.py` is a standalone utility that converts the latest available raw and combined datasets into Excel files. It does not fetch or process data and can therefore be run independently as long as the source data already exists.
 
 ### Local development setup
 
 1. Clone the project
-2. On root of the etl_dag_process create virtual environment with `uv init` or `python3 -m venv .venv`
-3. Activate virtual environment with `source .venv/bin/activate`
-4. Install packages with `pip install -e "server_dag/python-venvs/erp_pipeline/"`
+2. In the root directory of etl_dag_process, create a virtual environment:
+    ```bash
+    python3 -m venv .venv
+3. Activate the virtual environment
+    ```bash
+    source .venv/bin/activate
+4. Install the erp_pipeline package and its dependencies:
+    ```bash 
+    pip install -e "server_dag/python-venvs/erp_pipeline/"
 5. Create and set up `.env` and `dev.env` files. Required values are listed earlier on the instructions
-6. Install packages used on the `dag_test.py` and `dataset_to_excel.py` with : `python -m pip install -r requirements-dev.txt`
-7. (Optional) Create launch.json file for visual studio code `.vscode/launch.json` 
-```
-{
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Python Debug: main.py",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/main.py",
-            "console": "integratedTerminal",
-            "cwd": "${workspaceFolder}"
-        }
-    ]
-}
-```
-8. Run with python main.py or with launch configuration
-9. Verify the generated database model Excel file
-10. The generated Excel files are written to the folder defined by dev.env variable `OUTPUT_EXCEL_FOLDER`.
+6. Install development dependecies required by `dag_test.py` and `dataset_to_excel.py`:
+    ```bash
+    python -m pip install -r requirements-dev.txt
+7. Optionally, create a Visual Studio Code launch configuration in `.vscode/launch.json` 
+    ```
+    {
+        "version": "0.2.0",
+        "configurations": [
+            {
+                "name": "Python Debug: main.py",
+                "type": "debugpy",
+                "request": "launch",
+                "program": "${workspaceFolder}/main.py",
+                "console": "integratedTerminal",
+                "cwd": "${workspaceFolder}"
+            }
+        ]
+    }
+    ```
+8. Run the project:
+    ```bash
+    python main.py
+9. Verify the generated data model Excel files.
+10. Generated Excel files are written to the directory defined by the `OUTPUT_EXCEL_FOLDER` variable in `dev.env`.
 
 
 
-## Local airflow deploy configuration
+## Local Airflow deploy configuration
 
-The DAG uses Airflow's `ExternalPythonOperator` running in a virtual environment to keep project dependencies from interfering with Airflow's own dependencies (as well as any other projects').
+The DAG uses Airflow's `ExternalPythonOperator` to run pipeline tasks in a separate Python virtual environment. This isolates the project's dependencies from Airflow's own dependencies and from other projects running in the same environment.
 
-The project provides a default docker-compose.yaml file that defines multiple containers for different services. 
+The project includes a default `docker-compose.yaml` file that defines the required Airflow services.
+
 All Airflow-specific volumes are assumed to be bind mounts that are shared between Airflow containers (e.g. `airflow-dag-processor`, `airflow-worker` etc.).  
 
 `docker-compose.yaml` mounts the following files and directories into the Airflow containers:
@@ -198,7 +239,7 @@ Create a `.env` file in the same directory as `docker-compose.yaml`. First, chec
 
 ### 2. Set directory ownership
 
-The owner of the mounted directories must match the `AIRFLOW_UID` value in `.env`. If you are running as root, omit `sudo`.
+The ownership of the mounted directories must be compatible with the `AIRFLOW_UID` configured in `.env`. If you are running as root, omit `sudo`.
 
 ```bash
 sudo chown -R <AIRFLOW_UID>:0 ./server_dag ./logs ./plugins
@@ -213,8 +254,20 @@ docker compose logs erp-pipeline-init
 
 A successful installation ends with the line `erp_pipeline virtual environment is ready.`
 
+After starting the Docker environment:
+
+1. Open the Airflow web interface at http://localhost:8080.
+2. Log in using the default credentials defined in docker-compose.yaml.
+3. Locate the server_erp_file_processor DAG.
+4. Select Trigger DAG to start the pipeline.
+
+The DAG contains 29 tasks that are executed based on their dependencies. If a task fails, Airflow retries it automatically after five minutes. After a second failure, the task is marked as failed, and its dependent downstream tasks will not be executed.
+
 
 ## Production deployment setup
+
+The example below assumes that /home/user/projects/airflow/data/config/python-venvs/erp_pipeline/ on the host is mounted to /opt/airflow/config/python-venvs/erp_pipeline/ inside the Airflow container. 
+Adjust the paths according to your deployment.
 
 An example deployment process would go as follows (adjust the paths as needed):
 
@@ -228,58 +281,62 @@ An example deployment process would go as follows (adjust the paths as needed):
 
 `scp ./build/.env user@AIRFLOW_HOST:/home/user/projects/airflow/data/config/python-venvs/erp_pipeline/`
 
-(it's likely to get `permission denied` error, in that case either `chown` or `chmod` the target folder as appropriate, or `scp` the contents to somewhere else first, then `sudo cp` to the destination folder on the target host)
+(it's likely to get `permission denied` error, in that case either `chown` or `chmod` the target directory as appropriate, or `scp` the contents to somewhere else first, then `sudo cp` to the destination directory on the target host)
 
-7. Access the Airflow host machine and Airflow container again as per steps 1 and 2 above, then `cd /opt/airflow/config/python-venvs/erp_pipeline`
-8. Activate the python virtual environment with `source ./.venv/bin/activate`
-9. Install the copied python modules and their dependencies to the virtual environment with `pip install -e .`
+6. Access the Airflow host machine and Airflow container again as per steps 1 and 2 above, then `cd /opt/airflow/config/python-venvs/erp_pipeline`
+7. Activate the python virtual environment with `source ./.venv/bin/activate`
+8. Install the copied python modules and their dependencies to the virtual environment with `pip install -e .`
 
 ### The DAG
 
-The dag file is `server_erp_file_processor.py`. It calls files that are defined in `python-venvs/erp_pipeline/er_pipeline/` folder.
+The dag file is he DAG file is `server_erp_file_processor.py`. 
+It orchestrates the ETL pipeline by calling functions provided by the erp_pipeline package located under `python-venvs/erp_pipeline/erp_pipeline/`.
 
-### ERP-pipeline folder content
+### ERP-pipeline directory content
 
 #### auth
 
-Authentication and API login logic are defined here. SSL verification is currently disabled (`verify=False`). Consider enabling certificate validation when connecting to external APIs. 
-File requires that .env file is defined with the following values: `USERNAME`, `PASSWORD`, `LOGIN_URL` and `AUTHVALUE`.
+Contains the authentication and API login logic. SSL verification is currently disabled (`verify=False`). Consider enabling certificate validation when connecting to external APIs. 
+The module requires the following variables to be defined in the `.env` file: `USERNAME`, `PASSWORD`, `LOGIN_URL` and `AUTHVALUE`.
 
 #### combine_data
 
-Contains `combine_data_files.py`. All the staged data combining is defined here. The staged datasets are combined and saved as Parquet files in the `results/combined folder`.
+Contains the logic for combining staged datasets. The combined datasets are saved as Parquet files in the `results/combined/` directory.
 
 #### config
 
-This folder contains 3 files: `config.py`, `erp_config.py`, `path_config.py`.
+This directory contains 3 files: `config.py`, `erp_config.py`, `path_config.py`.
 
-`config.py`: Contains all the variables that are defined on the `.env` file. This can be also used as helper to see what values `.env` file must have.
+`config.py`: Contains the configuration variables loaded from the `.env` file. It can also be used as a reference for the required environment variables.
+This can be also used as helper to see what values `.env` file must have.
 
-`erp_config.py`: Has all the columns that are used on the processing of the files. When data is fetched from the API, the whole data is stored to results/raw/ folder. These column definitions in the `erp_config.py` are used to define what data we need to use for staging and combining.  If additional fields are required later, update the column definitions in this file.
+`erp_config.py`: Defines the columns used when processing ERP datasets. Raw API responses are stored in the `results/raw/ directory`, while the column definitions in `erp_config.py` determine which fields are retained during staging and combining. If additional fields are required, update the corresponding column definitions in this file.
 
 `path_config.py`: Contains path definitions.
 
 #### database
 
-The database-folder contains `connection.py`, `database_mapper.py`, `writers.py`
+The database/ directory contains `connection.py`, `database_mapper.py`, `writers.py`
 
-`connection.py`: The database-connection is defined here. File requires that .env file is defined with the following values: `DB_SERVER`, `DB_NAME`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`. Uses PostgreSQL.
+`connection.py`: Defines the PostgreSQL database connection. The following variables must be defined in `.env`: `DB_SERVER`, `DB_NAME`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`.
 
-`database_mapper.py`: The data is mapped to the datamodel. The database schema must match the column names and data types defined in the mapper. You can find the create-database-script from here: TODO: .
+`database_mapper.py`: Maps processed datasets to the data warehouse schema. The database schema must match the column names and data types defined by the mapper. 
+You can find the create-database-script from here: https://github.com/TUOVAProject/tuotantotiedon-tietomalli
 
-`writers.py`: Provides database write operations used by the ETL pipeline. It supports loading data into PostgreSQL tables, clearing existing data when required, truncating fact tables during full refreshes, and performing incremental loads through UPSERT logic to avoid duplicate records while updating existing ones.
+`writers.py`: Provides the database write operations used by the ETL pipeline. It supports loading data into PostgreSQL tables, clearing existing data when required, truncating fact tables during full refreshes, and performing incremental loads using UPSERT logic to update existing records and avoid duplicates.
 
 #### fetch_erp_data
 
-fetch_erp_data-folder contains `common.py`, `inventory.py`, `manufacturing.py`, `sales.py` and `time_recording.py`. 
+The fetch_erp_data/ directory contains `common.py`, `inventory.py`, `manufacturing.py`, `sales.py` and `time_recording.py`. 
 
-Each endpoint category has its own file responsible for fetching data from the API. The API endpoints used by the category are defined within that file. To scale data retrieval, additional endpoints can be added or existing query parameters can be modified. 
+Each endpoint category has its own file responsible for fetching data from the API. The API endpoints used by the category are defined within that file. 
+Additional endpoints can be added, or existing query parameters can be modified, to extend the data retrieved from the API. 
 
 Data is exported to separate files. During each run, old files are automatically removed according to the `days_to_keep_parameter` setting. For example, if `days_to_keep_parameter = 2`, files from the previous two days are retained and older files are deleted.
 
 #### helpers
 
-helpers folder contains `file_helpers.py` and `type_helpers.py`
+helpers directory contains `file_helpers.py` and `type_helpers.py`
 
 `file_helpers.py`: Functions for API extraction file management, including endpoint-to-file name conversion, retrieval of the latest extracted files, date-based partition handling, and storage of API response data as Parquet files in a structured directory hierarchy.
 
@@ -287,25 +344,25 @@ helpers folder contains `file_helpers.py` and `type_helpers.py`
 
 #### load_data
 
-load_data folder contains `data_loaders.py`. 
+load_data directory contains `data_loaders.py`. 
 
 `data_loaders.py`: Functions for loading, filtering, and retrieving the latest Parquet datasets based on the provided parameters.
 
 #### models
 
-models-folder is used to define all the classess and enums. Currently contains only the LoadMode enumeration.
+The models/ directory contains shared classes and enumerations used by the pipeline. It currently contains the LoadMode enumeration
 
 #### process
 
-process-folder contains `dataset_specific.py` and `process_erp.py`.
+process directory contains `dataset_specific.py` and `process_erp.py`.
 
 `dataset_specific.py`: Dataset-specific helper functions for resolving business logic and deriving missing values.
 
-`process_erp.py`: Processes the saved files from raw to staged. Drops the unnecessary columns using `erp_source.config.py` column declarations and saves the data in staged folder. During each run, old files are automatically removed according to the `days_to_keep_parameter` setting. For example, if `days_to_keep_parameter = 2`, files from the previous two days are retained and older files are deleted.
+`process_erp.py`: Processes raw datasets into staged datasets. It removes unnecessary columns according to the column definitions in `erp_config.py` and saves the resulting datasets to the `results/staged/` directory. During each run, old files are automatically removed according to the `days_to_keep_parameter` setting. For example, if `days_to_keep_parameter = 2`, files from the previous two days are retained and older files are deleted.
 
 #### file_cleaner.py
 
-Functions for cleaning old Parquet files and dated folders while preserving recent history.
+Functions for cleaning old Parquet files and dated directorys while preserving recent history.
 
 #### save.py
 
